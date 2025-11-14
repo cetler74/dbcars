@@ -69,3 +69,10 @@ logs
 # *.webm
 # *.mov
 
+# Uploaded files (keep directory structure, ignore files)
+backend/uploads/**/*
+!backend/uploads/
+!backend/uploads/**/
+!backend/uploads/.gitkeep
+!backend/uploads/vehicles/.gitkeep
+

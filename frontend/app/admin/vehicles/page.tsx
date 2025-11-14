@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import AdminLayout from '@/components/AdminLayout';
-import { getAdminVehicles, createVehicle, updateVehicle, deleteVehicle } from '@/lib/api';
+import { getAdminVehicles, createVehicle, updateVehicle, deleteVehicle, uploadImage } from '@/lib/api';
 import Link from 'next/link';
 
 export default function AdminVehiclesPage() {
@@ -10,6 +10,7 @@ export default function AdminVehiclesPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<any>(null);
+  const [uploading, setUploading] = useState(false);
   const [formData, setFormData] = useState({
     make: '',
     model: '',
@@ -119,6 +120,38 @@ export default function AdminVehiclesPage() {
     });
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    try {
+      // Upload files one by one
+      const uploadPromises = Array.from(files).map((file) => uploadImage(file));
+      const uploadedUrls = await Promise.all(uploadPromises);
+
+      // Add uploaded URLs to images array (avoid duplicates)
+      const newImages = uploadedUrls.filter((url) => !formData.images.includes(url));
+      setFormData({
+        ...formData,
+        images: [...formData.images, ...newImages],
+      });
+    } catch (error: any) {
+      alert(error.response?.data?.error || 'Error uploading image(s)');
+    } finally {
+      setUploading(false);
+      // Reset file input
+      e.target.value = '';
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setFormData({
+      ...formData,
+      images: formData.images.filter((_, i) => i !== index),
+    });
+  };
+
   return (
     <AdminLayout>
       <div className="flex justify-between items-center mb-8">
@@ -220,6 +253,67 @@ export default function AdminVehiclesPage() {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                 rows={3}
               />
+            </div>
+
+            {/* Images Section */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Images</label>
+              <div className="space-y-3">
+                <div>
+                  <label className="block mb-2">
+                    <span className="sr-only">Upload images</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                      multiple
+                      onChange={handleImageUpload}
+                      disabled={uploading}
+                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gray-700 file:text-white hover:file:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                  </label>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Select one or more images (JPEG, PNG, GIF, WebP). Max 5MB per image.
+                  </p>
+                  {uploading && (
+                    <p className="text-sm text-blue-600 mt-2">Uploading images...</p>
+                  )}
+                </div>
+                
+                {formData.images.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm text-gray-600">
+                      {formData.images.length} image{formData.images.length !== 1 ? 's' : ''} added
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {formData.images.map((imageUrl, index) => (
+                        <div key={index} className="relative border border-gray-200 rounded-lg overflow-hidden">
+                          <img
+                            src={imageUrl}
+                            alt={`Vehicle image ${index + 1}`}
+                            className="w-full h-32 object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Crect fill="%23ddd" width="200" height="200"/%3E%3Ctext fill="%23999" font-family="sans-serif" font-size="14" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EInvalid Image%3C/text%3E%3C/svg%3E';
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(index)}
+                            className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
+                            title="Remove image"
+                          >
+                            ×
+                          </button>
+                          <div className="p-2 bg-white">
+                            <p className="text-xs text-gray-500 truncate" title={imageUrl}>
+                              {imageUrl.length > 30 ? `${imageUrl.substring(0, 30)}...` : imageUrl}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex gap-4">

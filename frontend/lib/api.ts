@@ -145,5 +145,40 @@ export const logDamage = async (damageData: any) => {
   return response.data;
 };
 
+// Upload
+export const uploadImage = async (file: File): Promise<string> => {
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await axios.post(`${API_URL}/upload/image`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+      Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
+    },
+  });
+
+  // Return full URL
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3001';
+  return `${baseUrl}${response.data.url}`;
+};
+
+export const uploadImages = async (files: File[]): Promise<string[]> => {
+  const formData = new FormData();
+  files.forEach((file) => {
+    formData.append('images', file);
+  });
+
+  const response = await axios.post(`${API_URL}/upload/images`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+      Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
+    },
+  });
+
+  // Return full URLs
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3001';
+  return response.data.urls.map((url: string) => `${baseUrl}${url}`);
+};
+
 export default api;
 
