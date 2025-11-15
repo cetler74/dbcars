@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/Header";
-import Footer from "@/components/Footer";
+import ConditionalFooter from "@/components/ConditionalFooter";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -21,10 +21,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} antialiased`}>
+      <body className={`${inter.variable} antialiased`} style={{ margin: 0, padding: 0 }}>
         <Header />
-        <main className="min-h-screen">{children}</main>
-        <Footer />
+        <main className="min-h-screen pb-12 md:pb-16" style={{ margin: 0 }}>{children}</main>
+        <ConditionalFooter />
       </body>
     </html>
   );

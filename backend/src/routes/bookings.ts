@@ -10,20 +10,40 @@ const router = express.Router();
 router.post(
   '/',
   [
-    body('customer').isObject(),
-    body('vehicle_id').isUUID(),
-    body('pickup_location_id').isUUID(),
-    body('dropoff_location_id').isUUID(),
-    body('pickup_date').isISO8601(),
-    body('dropoff_date').isISO8601(),
-    body('extras').optional().isArray(),
-    body('coupon_code').optional().isString(),
+    body('customer').isObject().withMessage('Customer must be an object'),
+    body('vehicle_id').isUUID().withMessage('Vehicle ID must be a valid UUID'),
+    body('pickup_location_id').isUUID().withMessage('Pickup location ID must be a valid UUID'),
+    body('dropoff_location_id').isUUID().withMessage('Dropoff location ID must be a valid UUID'),
+    body('pickup_date').isISO8601().withMessage('Pickup date must be in ISO8601 format'),
+    body('dropoff_date').isISO8601().withMessage('Dropoff date must be in ISO8601 format'),
+    body('extras').optional().isArray().withMessage('Extras must be an array'),
+    body('coupon_code').optional().isString().withMessage('Coupon code must be a string'),
   ],
   async (req: Request, res: Response) => {
     try {
+      console.log('Booking request received:', {
+        vehicle_id: req.body.vehicle_id,
+        pickup_location_id: req.body.pickup_location_id,
+        dropoff_location_id: req.body.dropoff_location_id,
+        pickup_date: req.body.pickup_date,
+        dropoff_date: req.body.dropoff_date,
+        customer: req.body.customer ? { ...req.body.customer, phone: req.body.customer.phone?.substring(0, 10) + '...' } : null,
+      });
+      
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        console.error('Validation errors:', JSON.stringify(errors.array(), null, 2));
+        const errorDetails = errors.array().map((e: any) => {
+          const param = e.param || e.path || 'unknown';
+          const msg = e.msg || 'Invalid value';
+          return `${param}: ${msg}`;
+        }).join(', ');
+        
+        return res.status(400).json({ 
+          error: 'Validation failed',
+          errors: errors.array(),
+          details: errorDetails
+        });
       }
 
       const {
@@ -56,6 +76,9 @@ router.post(
       // Select subunit if not provided
       let selectedSubunitId = vehicle_subunit_id;
       if (!selectedSubunitId) {
+        if (availability.availableSubunits.length === 0) {
+          return res.status(400).json({ error: 'No available vehicle units for selected dates' });
+        }
         selectedSubunitId = availability.availableSubunits[0].id;
       }
 
@@ -194,7 +217,7 @@ router.post(
           dropoff_location_id,
           pickupDate,
           dropoffDate,
-          'confirmed',
+          'pending',
           totalPrice,
           pricing.base_price,
           extrasPrice,
@@ -244,9 +267,18 @@ router.post(
       );
 
       res.status(201).json(fullBookingResult.rows[0]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating booking:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        detail: error.detail,
+        stack: error.stack,
+      });
+      res.status(500).json({ 
+        error: 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   }
 );

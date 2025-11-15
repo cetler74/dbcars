@@ -9,6 +9,8 @@ import extrasRoutes from './routes/extras';
 import adminRoutes from './routes/admin';
 import authRoutes from './routes/auth';
 import uploadRoutes from './routes/upload';
+import blogRoutes from './routes/blog';
+import couponsRoutes from './routes/coupons';
 
 dotenv.config();
 
@@ -28,10 +30,30 @@ app.use('/api/vehicles', vehiclesRoutes);
 app.use('/api/bookings', bookingsRoutes);
 app.use('/api/locations', locationsRoutes);
 app.use('/api/extras', extrasRoutes);
-app.use('/api/coupons', require('./routes/coupons').default);
+app.use('/api/coupons', couponsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/blog', blogRoutes);
+
+// Root route
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'DB Luxury Cars API',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/api/health',
+      vehicles: '/api/vehicles',
+      bookings: '/api/bookings',
+      locations: '/api/locations',
+      extras: '/api/extras',
+      auth: '/api/auth',
+      admin: '/api/admin',
+      blog: '/api/blog'
+    }
+  });
+});
 
 // Health check
 app.get('/api/health', (req, res) => {

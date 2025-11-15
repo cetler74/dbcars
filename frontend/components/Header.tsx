@@ -1,61 +1,279 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import Image from 'next/image';
+import { useState, useEffect, useMemo } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import { getLocations } from '@/lib/api';
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [locations, setLocations] = useState<any[]>([]);
+  const [pickupLocation, setPickupLocation] = useState('');
+  const [pickupDate, setPickupDate] = useState<Date | null>(null);
+  const [dropoffDate, setDropoffDate] = useState<Date | null>(null);
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Memoize computed values to prevent unnecessary re-renders
+  const isHomePage = useMemo(() => pathname === '/', [pathname]);
+  const isAdminPage = useMemo(() => pathname?.startsWith('/admin'), [pathname]);
+  const isAboutPage = useMemo(() => pathname === '/about', [pathname]);
+  const isCarsListingPage = useMemo(() => pathname === '/cars', [pathname]);
+  const isCarsPage = useMemo(() => pathname === '/cars' || pathname?.startsWith('/cars/'), [pathname]);
+  const isBlogPage = useMemo(() => pathname === '/blog' || pathname?.startsWith('/blog/'), [pathname]);
+  const hasHeroSection = isHomePage;
+
+  // Load locations only when needed (memoized to prevent unnecessary calls)
+  useEffect(() => {
+    if (isCarsListingPage && locations.length === 0) {
+      getLocations().then(setLocations).catch(console.error);
+    }
+  }, [isCarsListingPage, locations.length]);
+
+  // Load from URL params on mount
+  useEffect(() => {
+    if (isCarsListingPage) {
+      const locationParam = searchParams.get('location') || '';
+      const fromParam = searchParams.get('available_from') || '';
+      const toParam = searchParams.get('available_to') || '';
+      
+      setPickupLocation(locationParam);
+      setPickupDate(fromParam ? new Date(fromParam) : null);
+      setDropoffDate(toParam ? new Date(toParam) : null);
+    } else {
+      // Reset when leaving cars page
+      setPickupLocation('');
+      setPickupDate(null);
+      setDropoffDate(null);
+    }
+  }, [isCarsListingPage, searchParams]);
+
+  // Save to localStorage and update URL when filters change (debounced to avoid infinite loops)
+  useEffect(() => {
+    if (!isCarsListingPage || typeof window === 'undefined') return;
+    
+    const timeoutId = setTimeout(() => {
+      try {
+        // Save to localStorage for persistence across pages
+        if (pickupLocation || pickupDate || dropoffDate) {
+          const searchData = {
+            pickup_location_id: pickupLocation,
+            pickup_date: pickupDate ? pickupDate.toISOString() : null,
+            dropoff_date: dropoffDate ? dropoffDate.toISOString() : null,
+          };
+          localStorage.setItem('carSearchData', JSON.stringify(searchData));
+        }
+        
+        const params = new URLSearchParams(searchParams.toString());
+        let hasChanges = false;
+        
+        const currentLocation = params.get('location') || '';
+        const currentFrom = params.get('available_from') || '';
+        const currentTo = params.get('available_to') || '';
+        
+        if (pickupLocation) {
+          if (currentLocation !== pickupLocation) {
+            params.set('location', pickupLocation);
+            hasChanges = true;
+          }
+        } else {
+          if (currentLocation) {
+            params.delete('location');
+            hasChanges = true;
+          }
+        }
+        
+        if (pickupDate) {
+          const dateStr = pickupDate.toISOString().split('T')[0];
+          if (currentFrom !== dateStr) {
+            params.set('available_from', dateStr);
+            hasChanges = true;
+          }
+        } else {
+          if (currentFrom) {
+            params.delete('available_from');
+            hasChanges = true;
+          }
+        }
+        
+        if (dropoffDate) {
+          const dateStr = dropoffDate.toISOString().split('T')[0];
+          if (currentTo !== dateStr) {
+            params.set('available_to', dateStr);
+            hasChanges = true;
+          }
+        } else {
+          if (currentTo) {
+            params.delete('available_to');
+            hasChanges = true;
+          }
+        }
+        
+        // Only push if there are actual changes to avoid infinite loops
+        if (hasChanges) {
+          const newUrl = `/cars?${params.toString()}`;
+          const currentUrl = window.location.pathname + window.location.search;
+          if (currentUrl !== newUrl) {
+            router.push(newUrl);
+          }
+        }
+      } catch (error) {
+        console.error('Error updating URL params:', error);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupLocation, pickupDate, dropoffDate, isCarsListingPage]);
+
+  // Don't show header on admin pages
+  if (isAdminPage) {
+    return null;
+  }
 
   return (
-    <header className="bg-white shadow-sm sticky top-0 z-50 border-b border-gray-200">
-      <nav className="container mx-auto px-4 md:px-6 py-4">
+    <header
+      className={`sticky top-0 z-50 transition-all ${
+        isAboutPage || isCarsPage || isBlogPage
+          ? 'bg-black shadow-sm'
+          : hasHeroSection
+          ? 'bg-transparent'
+          : 'bg-white shadow-sm'
+      }`}
+    >
+      <nav className="container mx-auto px-4 md:px-6 py-4 bg-transparent">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <Link href="/" className="text-2xl md:text-3xl font-bold text-black hover:text-gray-700 transition-colors">
-            DB Luxury Cars
+          <Link
+            href="/"
+            prefetch={true}
+            className="flex items-center transition-opacity hover:opacity-80"
+          >
+            <Image
+              src="/logodb.png"
+              alt="DB Luxury Cars"
+              width={200}
+              height={80}
+              className="h-14 md:h-16 lg:h-20 w-auto object-contain"
+              priority
+              unoptimized
+            />
           </Link>
+
+          {/* Location and Date Fields (only on cars listing page) */}
+          {isCarsListingPage && (
+            <div className="hidden lg:flex items-center gap-3 flex-1 max-w-2xl mx-8">
+              {/* Pickup Location */}
+              <div className="flex-1">
+                <select
+                  value={pickupLocation}
+                  onChange={(e) => setPickupLocation(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-white/50"
+                >
+                  <option value="">Pickup Location</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name} - {loc.city}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Pickup Date */}
+              <div className="flex-1">
+                <DatePicker
+                  selected={pickupDate}
+                  onChange={(date: Date | null) => setPickupDate(date)}
+                  minDate={new Date()}
+                  placeholderText="Pickup Date"
+                  dateFormat="dd/MM/yyyy"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  wrapperClassName="w-full"
+                />
+              </div>
+
+              {/* Dropoff Date */}
+              <div className="flex-1">
+                <DatePicker
+                  selected={dropoffDate}
+                  onChange={(date: Date | null) => setDropoffDate(date)}
+                  minDate={pickupDate || new Date()}
+                  placeholderText="Dropoff Date"
+                  dateFormat="dd/MM/yyyy"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  wrapperClassName="w-full"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
             <Link
               href="/"
-              className="text-black hover:text-gray-600 transition-colors font-medium"
+              className={`transition-colors font-medium ${
+                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
+              }`}
             >
               Home
             </Link>
-            <Link
-              href="/about"
-              className="text-black hover:text-gray-600 transition-colors font-medium"
-            >
-              About us
-            </Link>
+          <Link
+            href="/about"
+            prefetch={true}
+            className={`transition-colors font-medium ${
+              hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
+            }`}
+          >
+            About us
+          </Link>
             <Link
               href="/cars"
-              className="text-black hover:text-gray-600 transition-colors font-medium"
+              prefetch={true}
+              className={`transition-colors font-medium ${
+                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
+              }`}
             >
               Our Cars
             </Link>
             <Link
               href="/blog"
-              className="text-black hover:text-gray-600 transition-colors font-medium"
+              prefetch={true}
+              className={`transition-colors font-medium ${
+                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
+              }`}
             >
               Blog
             </Link>
             <Link
               href="/faq"
-              className="text-black hover:text-gray-600 transition-colors font-medium"
+              prefetch={true}
+              className={`transition-colors font-medium ${
+                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
+              }`}
             >
               FAQ
             </Link>
             <Link
               href="/contact"
-              className="text-black hover:text-gray-600 transition-colors font-medium"
+              prefetch={true}
+              className={`transition-colors font-medium ${
+                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
+              }`}
             >
               Contacts
             </Link>
             <Link
               href="/admin"
-              className="bg-black text-white px-5 py-2 rounded-md hover:bg-gray-800 transition-colors font-medium"
+              prefetch={true}
+              className={`px-5 py-2 rounded-md transition-colors font-medium ${
+                hasHeroSection || isAboutPage || isCarsPage || isBlogPage
+                  ? 'bg-white text-black hover:bg-gray-100'
+                  : 'bg-black text-white hover:bg-gray-800'
+              }`}
             >
               Admin
             </Link>
@@ -63,7 +281,7 @@ export default function Header() {
 
           {/* Mobile Menu Button */}
           <button
-            className="md:hidden text-black"
+            className={`md:hidden transition-colors ${hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white' : 'text-black'}`}
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             aria-label="Toggle menu"
           >
@@ -92,54 +310,117 @@ export default function Header() {
           </button>
         </div>
 
+        {/* Mobile Location and Date Fields (only on cars listing page) */}
+        {isCarsListingPage && (
+          <div className="lg:hidden mt-4 space-y-3 pb-4">
+            {/* Pickup Location */}
+            <div>
+              <select
+                value={pickupLocation}
+                onChange={(e) => setPickupLocation(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-white/50"
+              >
+                <option value="">Pickup Location</option>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name} - {loc.city}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Dates */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <DatePicker
+                  selected={pickupDate}
+                  onChange={(date: Date | null) => setPickupDate(date)}
+                  minDate={new Date()}
+                  placeholderText="Pickup Date"
+                  dateFormat="dd/MM/yyyy"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  wrapperClassName="w-full"
+                />
+              </div>
+              <div>
+                <DatePicker
+                  selected={dropoffDate}
+                  onChange={(date: Date | null) => setDropoffDate(date)}
+                  minDate={pickupDate || new Date()}
+                  placeholderText="Dropoff Date"
+                  dateFormat="dd/MM/yyyy"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  wrapperClassName="w-full"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Mobile Navigation */}
         {isMenuOpen && (
           <div className="md:hidden mt-4 space-y-4 pb-4">
             <Link
               href="/"
-              className="block text-black hover:text-gray-600 font-medium"
+              className={`block font-medium transition-colors ${
+                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
+              }`}
               onClick={() => setIsMenuOpen(false)}
             >
               Home
             </Link>
             <Link
               href="/about"
-              className="block text-black hover:text-gray-600 font-medium"
+              className={`block font-medium transition-colors ${
+                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
+              }`}
               onClick={() => setIsMenuOpen(false)}
             >
               About us
             </Link>
             <Link
               href="/cars"
-              className="block text-black hover:text-gray-600 font-medium"
+              className={`block font-medium transition-colors ${
+                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
+              }`}
               onClick={() => setIsMenuOpen(false)}
             >
               Our Cars
             </Link>
             <Link
               href="/blog"
-              className="block text-black hover:text-gray-600 font-medium"
+              className={`block font-medium transition-colors ${
+                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
+              }`}
               onClick={() => setIsMenuOpen(false)}
             >
               Blog
             </Link>
             <Link
               href="/faq"
-              className="block text-black hover:text-gray-600 font-medium"
+              className={`block font-medium transition-colors ${
+                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
+              }`}
               onClick={() => setIsMenuOpen(false)}
             >
               FAQ
             </Link>
             <Link
               href="/contact"
-              className="block text-black hover:text-gray-600 font-medium"
+              className={`block font-medium transition-colors ${
+                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
+              }`}
               onClick={() => setIsMenuOpen(false)}
             >
               Contacts
             </Link>
             <Link
               href="/admin"
-              className="block bg-black text-white px-4 py-2 rounded-md text-center font-medium"
+              className={`block px-5 py-2 rounded-md transition-colors font-medium text-center ${
+                hasHeroSection || isAboutPage || isCarsPage || isBlogPage
+                  ? 'bg-white text-black hover:bg-gray-100'
+                  : 'bg-black text-white hover:bg-gray-800'
+              }`}
               onClick={() => setIsMenuOpen(false)}
             >
               Admin

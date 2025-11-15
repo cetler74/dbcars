@@ -57,7 +57,7 @@ router.get('/', async (req: Request, res: Response) => {
              FROM bookings b
              JOIN vehicle_subunits vs ON b.vehicle_subunit_id = vs.id
              WHERE vs.vehicle_id = $1
-             AND b.status IN ('confirmed', 'active')
+             AND b.status IN ('pending', 'confirmed', 'active')
              AND (
                (b.pickup_date <= $2 AND b.dropoff_date >= $2)
                OR (b.pickup_date <= $3 AND b.dropoff_date >= $3)
@@ -86,33 +86,7 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// Get single vehicle by ID
-router.get('/:id', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    const vehicleResult = await pool.query(
-      `SELECT v.*, 
-       json_agg(DISTINCT vs.*) FILTER (WHERE vs.id IS NOT NULL) as subunits
-       FROM vehicles v
-       LEFT JOIN vehicle_subunits vs ON v.id = vs.vehicle_id
-       WHERE v.id = $1
-       GROUP BY v.id`,
-      [id]
-    );
-
-    if (vehicleResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Vehicle not found' });
-    }
-
-    res.json(vehicleResult.rows[0]);
-  } catch (error) {
-    console.error('Error fetching vehicle:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Check vehicle availability
+// Check vehicle availability (must come before /:id route)
 router.get('/:id/availability', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -134,13 +108,14 @@ router.get('/:id/availability', async (req: Request, res: Response) => {
     const totalSubunits = subunitsResult.rows.length;
 
     // Check bookings in this date range
+    // Include 'pending' status to match calendar view and prevent double bookings
     const bookingsResult = await pool.query(
       `SELECT vehicle_subunit_id, pickup_date, dropoff_date
        FROM bookings
        WHERE vehicle_subunit_id IN (
          SELECT id FROM vehicle_subunits WHERE vehicle_id = $1
        )
-       AND status IN ('confirmed', 'active')
+       AND status IN ('pending', 'confirmed', 'active')
        AND (
          (pickup_date <= $2 AND dropoff_date >= $2)
          OR (pickup_date <= $3 AND dropoff_date >= $3)
@@ -164,6 +139,82 @@ router.get('/:id/availability', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error checking availability:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get single vehicle by ID
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // First, get the vehicle basic info
+    const vehicleResult = await pool.query(
+      `SELECT * FROM vehicles WHERE id = $1 AND is_active = true`,
+      [id]
+    );
+
+    if (vehicleResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Vehicle not found' });
+    }
+
+    const vehicle = vehicleResult.rows[0];
+
+    // Get subunits separately to avoid json_agg issues
+    const subunitsResult = await pool.query(
+      `SELECT * FROM vehicle_subunits WHERE vehicle_id = $1`,
+      [id]
+    );
+
+    // Get images if they exist in a separate column or table
+    // For now, we'll handle images from the vehicle record itself
+    const images = vehicle.images || [];
+    
+    // Parse images if it's a string (JSON)
+    let parsedImages = images;
+    if (typeof images === 'string') {
+      try {
+        parsedImages = JSON.parse(images);
+      } catch (e) {
+        parsedImages = images ? [images] : [];
+      }
+    }
+    if (!Array.isArray(parsedImages)) {
+      parsedImages = parsedImages ? [parsedImages] : [];
+    }
+
+    // Parse features if it's a string (JSON)
+    let parsedFeatures = vehicle.features || [];
+    if (typeof vehicle.features === 'string') {
+      try {
+        parsedFeatures = JSON.parse(vehicle.features);
+      } catch (e) {
+        parsedFeatures = vehicle.features ? [vehicle.features] : [];
+      }
+    }
+    if (!Array.isArray(parsedFeatures)) {
+      parsedFeatures = parsedFeatures ? [parsedFeatures] : [];
+    }
+
+    // Combine all data
+    const vehicleData = {
+      ...vehicle,
+      subunits: subunitsResult.rows,
+      images: parsedImages,
+      features: parsedFeatures,
+    };
+
+    res.json(vehicleData);
+  } catch (error: any) {
+    console.error('Error fetching vehicle:', error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+    });
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

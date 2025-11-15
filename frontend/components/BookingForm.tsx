@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import {
@@ -14,9 +15,19 @@ import {
 
 interface BookingFormProps {
   vehicle: any;
+  initialPickupDate?: Date | null;
+  initialDropoffDate?: Date | null;
+  initialPickupLocation?: string;
+  initialDropoffLocation?: string;
 }
 
-export default function BookingForm({ vehicle }: BookingFormProps) {
+export default function BookingForm({ 
+  vehicle, 
+  initialPickupDate = null,
+  initialDropoffDate = null,
+  initialPickupLocation = '',
+  initialDropoffLocation = ''
+}: BookingFormProps) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -29,19 +40,18 @@ export default function BookingForm({ vehicle }: BookingFormProps) {
   const [couponError, setCouponError] = useState('');
 
   const [formData, setFormData] = useState({
-    pickup_location_id: '',
-    dropoff_location_id: '',
-    pickup_date: null as Date | null,
-    dropoff_date: null as Date | null,
+    pickup_location_id: initialPickupLocation,
+    dropoff_location_id: initialDropoffLocation,
+    pickup_date: initialPickupDate,
+    dropoff_date: initialDropoffDate,
     selected_extras: [] as any[],
     customer: {
       first_name: '',
       last_name: '',
       email: '',
       phone: '',
+      phone_country_code: '+212',
       date_of_birth: '',
-      license_number: '',
-      license_country: '',
       license_expiry: '',
       address: '',
       city: '',
@@ -186,21 +196,92 @@ export default function BookingForm({ vehicle }: BookingFormProps) {
     setLoading(true);
 
     try {
-      const bookingData = {
+      // Combine country code with phone number
+      const fullPhoneNumber = `${formData.customer.phone_country_code}${formData.customer.phone}`;
+      
+      // Prepare customer data without phone_country_code and with null license fields
+      const customerData = {
+        first_name: formData.customer.first_name,
+        last_name: formData.customer.last_name,
+        email: formData.customer.email,
+        phone: fullPhoneNumber,
+        date_of_birth: formData.customer.date_of_birth || null,
+        license_number: null, // Removed from form
+        license_country: null, // Removed from form
+        license_expiry: formData.customer.license_expiry || null,
+        address: formData.customer.address || null,
+        city: formData.customer.city || null,
+        country: formData.customer.country || null,
+      };
+      
+      // Validate required fields before sending
+      if (!formData.pickup_date || !formData.dropoff_date) {
+        alert('Please select both pickup and dropoff dates');
+        setLoading(false);
+        return;
+      }
+      
+      if (!formData.pickup_location_id || !formData.dropoff_location_id) {
+        alert('Please select both pickup and dropoff locations');
+        setLoading(false);
+        return;
+      }
+      
+      if (!customerData.first_name || !customerData.last_name || !customerData.email || !customerData.phone) {
+        alert('Please fill in all required customer information');
+        setLoading(false);
+        return;
+      }
+
+      const bookingData: any = {
         vehicle_id: vehicle.id,
         pickup_location_id: formData.pickup_location_id,
         dropoff_location_id: formData.dropoff_location_id,
-        pickup_date: formData.pickup_date!.toISOString(),
-        dropoff_date: formData.dropoff_date!.toISOString(),
-        extras: formData.selected_extras,
-        coupon_code: coupon?.code || null,
-        customer: formData.customer,
+        pickup_date: formData.pickup_date.toISOString(),
+        dropoff_date: formData.dropoff_date.toISOString(),
+        extras: Array.isArray(formData.selected_extras) ? formData.selected_extras : [],
+        customer: customerData,
       };
+      
+      // Only include coupon_code if it exists (validator expects string or undefined, not null)
+      if (coupon?.code) {
+        bookingData.coupon_code = coupon.code;
+      }
 
+      console.log('Final booking data being sent:', bookingData);
       const booking = await createBooking(bookingData);
       router.push(`/booking/confirmation?bookingNumber=${booking.booking_number}`);
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Error creating booking');
+      console.error('Booking error:', error);
+      console.error('Error response:', error.response?.data);
+      
+      let errorMessage = 'Error creating booking';
+      if (error.response?.data) {
+        if (error.response.data.details) {
+          errorMessage = `Validation error: ${error.response.data.details}`;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+          if (error.response.data.errors && Array.isArray(error.response.data.errors)) {
+            const errorList = error.response.data.errors.map((e: any) => {
+              const param = e.param || e.path || 'unknown';
+              const msg = e.msg || 'Invalid value';
+              return `${param}: ${msg}`;
+            }).join(', ');
+            errorMessage += ` (${errorList})`;
+          }
+        } else if (error.response.data.errors && Array.isArray(error.response.data.errors)) {
+          const errorList = error.response.data.errors.map((e: any) => {
+            const param = e.param || e.path || 'unknown';
+            const msg = e.msg || 'Invalid value';
+            return `${param}: ${msg}`;
+          }).join(', ');
+          errorMessage = `Validation errors: ${errorList}`;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(`Error creating booking: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -343,9 +424,26 @@ export default function BookingForm({ vehicle }: BookingFormProps) {
 
           <button
             type="button"
-            onClick={() => setStep(2)}
-            disabled={!formData.pickup_date || !formData.dropoff_date || !availability?.available}
-            className="w-full bg-gray-900 text-white px-8 py-3 rounded-lg font-semibold hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            onClick={() => {
+              if (!formData.dropoff_location_id) {
+                alert('Please select a drop-off location before continuing');
+                return;
+              }
+              if (!formData.pickup_location_id) {
+                alert('Please select a pick-up location before continuing');
+                return;
+              }
+              if (!formData.pickup_date || !formData.dropoff_date) {
+                alert('Please select both pick-up and drop-off dates before continuing');
+                return;
+              }
+              if (!availability?.available) {
+                alert('Vehicle is not available for the selected dates. Please choose different dates.');
+                return;
+              }
+              setStep(2);
+            }}
+            className="w-full bg-gray-900 text-white px-8 py-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors"
           >
             Continue to Extras
           </button>
@@ -359,26 +457,46 @@ export default function BookingForm({ vehicle }: BookingFormProps) {
           <div className="space-y-4">
             {extras.map((extra) => {
               const isSelected = formData.selected_extras.some((e) => e.id === extra.id);
+              const getImageUrl = (url: string | null) => {
+                if (!url) return null;
+                if (url.startsWith('http://') || url.startsWith('https://')) {
+                  return url;
+                }
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+                const baseUrl = apiUrl.replace('/api', '');
+                return `${baseUrl}${url.startsWith('/') ? url : `/${url}`}`;
+              };
               return (
                 <label
                   key={extra.id}
-                  className="flex items-center justify-between p-4 border rounded-lg cursor-pointer hover:bg-gray-50"
+                  className={`flex items-center gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                    isSelected ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
                 >
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => handleExtraToggle(extra.id)}
-                      className="mr-3"
-                    />
-                    <div>
-                      <span className="font-medium">{extra.name}</span>
-                      {extra.description && (
-                        <p className="text-sm text-gray-600">{extra.description}</p>
-                      )}
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => handleExtraToggle(extra.id)}
+                    className="w-5 h-5 text-yellow-400 border-gray-300 rounded focus:ring-yellow-400"
+                  />
+                  {extra.cover_image && (
+                    <div className="relative w-24 h-24 flex-shrink-0 rounded overflow-hidden">
+                      <Image
+                        src={getImageUrl(extra.cover_image) || ''}
+                        alt={extra.name}
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
                     </div>
+                  )}
+                  <div className="flex-1">
+                    <span className="font-medium text-gray-900 block">{extra.name}</span>
+                    {extra.description && (
+                      <p className="text-sm text-gray-600 mt-1">{extra.description}</p>
+                    )}
                   </div>
-                  <span className="font-semibold">
+                  <span className="font-semibold text-gray-900">
                     €{Number(extra.price || 0).toFixed(2)}
                     {extra.price_type === 'per_day' && '/day'}
                   </span>
@@ -528,54 +646,46 @@ export default function BookingForm({ vehicle }: BookingFormProps) {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Phone *
+                Phone <span className="text-red-500">*</span>
               </label>
-              <input
-                type="tel"
-                value={formData.customer.phone}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    customer: { ...prev.customer, phone: e.target.value },
-                  }))
-                }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                License Number
-              </label>
-              <input
-                type="text"
-                value={formData.customer.license_number}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    customer: { ...prev.customer, license_number: e.target.value },
-                  }))
-                }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                License Country
-              </label>
-              <input
-                type="text"
-                value={formData.customer.license_country}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    customer: { ...prev.customer, license_country: e.target.value },
-                  }))
-                }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900"
-              />
+              <div className="flex gap-2">
+                <select
+                  value={formData.customer.phone_country_code}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      customer: { ...prev.customer, phone_country_code: e.target.value },
+                    }))
+                  }
+                  className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 bg-white"
+                >
+                  <option value="+212">+212 (MA)</option>
+                  <option value="+33">+33 (FR)</option>
+                  <option value="+34">+34 (ES)</option>
+                  <option value="+39">+39 (IT)</option>
+                  <option value="+44">+44 (UK)</option>
+                  <option value="+49">+49 (DE)</option>
+                  <option value="+1">+1 (US/CA)</option>
+                  <option value="+971">+971 (AE)</option>
+                  <option value="+966">+966 (SA)</option>
+                  <option value="+20">+20 (EG)</option>
+                  <option value="+213">+213 (DZ)</option>
+                  <option value="+216">+216 (TN)</option>
+                </select>
+                <input
+                  type="tel"
+                  value={formData.customer.phone}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      customer: { ...prev.customer, phone: e.target.value },
+                    }))
+                  }
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900"
+                  placeholder="Enter phone number"
+                  required
+                />
+              </div>
             </div>
           </div>
 

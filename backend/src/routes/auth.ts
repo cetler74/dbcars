@@ -22,19 +22,26 @@ router.post(
 
       const { email, password } = req.body;
 
+      console.log('Login attempt:', { email, passwordLength: password?.length });
+
       const result = await pool.query(
         'SELECT id, email, password_hash, name, role FROM users WHERE email = $1',
         [email]
       );
 
       if (result.rows.length === 0) {
+        console.log('User not found for email:', email);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
       const user = result.rows[0];
+      console.log('User found:', { id: user.id, email: user.email, role: user.role });
+      
       const isValidPassword = await bcrypt.compare(password, user.password_hash);
+      console.log('Password valid:', isValidPassword);
 
       if (!isValidPassword) {
+        console.log('Invalid password for user:', email);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
@@ -54,6 +61,63 @@ router.post(
       });
     } catch (error) {
       console.error('Login error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// Dev Login (Development only - no password required)
+router.post(
+  '/dev-login',
+  [
+    body('email').isEmail().normalizeEmail(),
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      // Only allow in development
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(403).json({ error: 'Dev login not available in production' });
+      }
+
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { email } = req.body;
+
+      const result = await pool.query(
+        'SELECT id, email, name, role FROM users WHERE email = $1',
+        [email]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(401).json({ error: 'User not found' });
+      }
+
+      const user = result.rows[0];
+
+      // Only allow admin users for dev login
+      if (user.role !== 'admin') {
+        return res.status(403).json({ error: 'Dev login only available for admin users' });
+      }
+
+      const jwtSecret: string = process.env.JWT_SECRET || 'secret';
+      const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+      const payload = { id: user.id, email: user.email, role: user.role };
+      const token = jwt.sign(payload, jwtSecret, { expiresIn } as SignOptions);
+
+      res.json({
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        },
+      });
+    } catch (error) {
+      console.error('Dev login error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }

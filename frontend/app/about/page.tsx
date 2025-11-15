@@ -1,7 +1,23 @@
 export default function AboutPage() {
   return (
-    <div className="container mx-auto px-4 py-12">
-      <h1 className="text-4xl font-bold mb-8">About Us</h1>
+    <>
+      {/* Hero Section */}
+      <section className="relative w-full h-[40vh] min-h-[300px] bg-gradient-to-br from-gray-900 via-gray-800 to-black overflow-hidden">
+        <div className="absolute inset-0 bg-black/40 z-10"></div>
+        <div className="relative z-20 container mx-auto px-4 md:px-6 lg:px-12 h-full flex items-center">
+          <div className="text-white">
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-tight mb-4">
+              About Us
+            </h1>
+            <p className="text-lg md:text-xl text-gray-300 max-w-2xl">
+              Your trusted partner for luxury car rentals in Morocco
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Main Content */}
+      <div className="container mx-auto px-4 py-12">
       <div className="max-w-3xl space-y-6 text-gray-700">
         <p className="text-lg">
           DB Luxury Cars is Morocco&apos;s premier luxury car rental service, offering an
@@ -23,7 +39,8 @@ export default function AboutPage() {
           partner for an unforgettable driving experience.
         </p>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 
