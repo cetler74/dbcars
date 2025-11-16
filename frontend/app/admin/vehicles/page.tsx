@@ -98,7 +98,30 @@ export default function AdminVehiclesPage() {
       resetForm();
       loadVehicles();
     } catch (error) {
-      alert('Error saving vehicle');
+    console.error('Error saving vehicle:', error);
+    let message = 'Error saving vehicle.';
+
+    const anyError = error as any;
+    const data = anyError?.response?.data;
+
+    if (data) {
+      // Express-validator style errors
+      if (Array.isArray(data.errors) && data.errors.length > 0) {
+        const details = data.errors
+          .map((e: any) => {
+            const field = e.path || e.param || 'field';
+            const msg = e.msg || 'is invalid';
+            return `${field}: ${msg}`;
+          })
+          .join(', ');
+        message = `Please fix the following: ${details}`;
+      } else if (typeof data.error === 'string') {
+        // Custom backend error messages (e.g. license plate already exists)
+        message = data.error;
+      }
+    }
+
+    alert(message);
     }
   };
 

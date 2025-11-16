@@ -213,30 +213,166 @@ router.get('/bookings', async (req: Request, res: Response) => {
   }
 });
 
+// Helper to validate allowed booking status transitions and required fields
+function validateBookingStatusChange(
+  currentStatus: string,
+  newStatus: string,
+  notes?: string,
+  payment_link?: string,
+  currentPaymentLink?: string | null
+) {
+  const validStatuses = ['pending', 'waiting_payment', 'confirmed', 'cancelled', 'completed'];
+  if (!validStatuses.includes(newStatus)) {
+    return 'Invalid status';
+  }
+
+  const effectivePaymentLink = payment_link || currentPaymentLink || undefined;
+
+  // Require payment link when moving into waiting_payment
+  if (newStatus === 'waiting_payment' && !payment_link) {
+    return 'Payment link is required when setting status to waiting_payment';
+  }
+
+  // Require payment link when moving into confirmed and no link exists yet
+  if (newStatus === 'confirmed' && !effectivePaymentLink) {
+    return 'Payment link is required when setting status to confirmed';
+  }
+
+  // Require cancellation note
+  if (newStatus === 'cancelled' && (!notes || !notes.trim())) {
+    return 'Cancellation note is required when cancelling a booking';
+  }
+
+  // Basic transition rules (mostly permissive so admin can correct mistakes)
+  const allowedTransitions: Record<string, string[]> = {
+    pending: ['waiting_payment', 'confirmed', 'cancelled'],
+    waiting_payment: ['pending', 'confirmed', 'cancelled'],
+    confirmed: ['waiting_payment', 'cancelled', 'completed'],
+    completed: [], // completed is terminal in normal flow
+    cancelled: [], // cancelled is terminal in normal flow
+  };
+
+  const allowedNext = allowedTransitions[currentStatus] || [];
+  if (allowedNext.length > 0 && !allowedNext.includes(newStatus)) {
+    return `Cannot change status from ${currentStatus} to ${newStatus}`;
+  }
+
+  return null;
+}
+
+// Helper to automatically sync vehicle subunit status based on booking status
+async function syncVehicleSubunitStatus(booking: any) {
+  try {
+    const subunitId = booking.vehicle_subunit_id;
+    if (!subunitId) return;
+
+    // Get current subunit status
+    const subunitResult = await pool.query(
+      'SELECT id, status FROM vehicle_subunits WHERE id = $1',
+      [subunitId]
+    );
+    if (subunitResult.rows.length === 0) return;
+
+    const currentSubunit = subunitResult.rows[0];
+
+    // If admin has explicitly set maintenance, don't override automatically
+    if (currentSubunit.status === 'maintenance') {
+      return;
+    }
+
+    const now = new Date();
+    const pickupDate = new Date(booking.pickup_date);
+    const dropoffDate = new Date(booking.dropoff_date);
+    let newSubunitStatus: string | null = null;
+
+    switch (booking.status) {
+      case 'waiting_payment':
+        // Vehicle is reserved for this customer
+        newSubunitStatus = 'reserved';
+        break;
+      case 'confirmed':
+        if (now >= pickupDate && now <= dropoffDate) {
+          newSubunitStatus = 'out_on_rent';
+        } else if (now < pickupDate) {
+          newSubunitStatus = 'reserved';
+        } else {
+          // Past booking marked confirmed
+          newSubunitStatus = 'returned';
+        }
+        break;
+      case 'completed':
+        newSubunitStatus = 'returned';
+        break;
+      case 'cancelled': {
+        // On cancellation, check if there are other active/future bookings holding this subunit
+        const activeStatuses = ['pending', 'waiting_payment', 'confirmed'];
+        const futureBookingsResult = await pool.query(
+          `SELECT 1
+           FROM bookings
+           WHERE vehicle_subunit_id = $1
+           AND id != $2
+           AND status = ANY($3)
+           AND dropoff_date > NOW()
+           LIMIT 1`,
+          [subunitId, booking.id, activeStatuses]
+        );
+
+        if (futureBookingsResult.rows.length > 0) {
+          newSubunitStatus = 'reserved';
+        } else {
+          newSubunitStatus = 'available';
+        }
+        break;
+      }
+      default:
+        // For other statuses (e.g. pending), don't change automatically
+        break;
+    }
+
+    if (!newSubunitStatus || newSubunitStatus === currentSubunit.status) {
+      return;
+    }
+
+    await pool.query(
+      'UPDATE vehicle_subunits SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [newSubunitStatus, subunitId]
+    );
+  } catch (error) {
+    console.error('Error syncing vehicle subunit status:', error);
+    // Fail silently so booking update still succeeds
+  }
+}
+
 // Update booking status
 router.put('/bookings/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { status, notes, payment_link } = req.body;
+    const { status: newStatus, notes, payment_link } = req.body;
 
-    if (!status) {
+    if (!newStatus) {
       return res.status(400).json({ error: 'Status is required' });
     }
 
-    const validStatuses = ['pending', 'confirmed', 'active', 'completed', 'cancelled'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
+    // Load current booking for validation and later sync
+    const currentResult = await pool.query('SELECT * FROM bookings WHERE id = $1', [id]);
+    if (currentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found' });
     }
+    const currentBooking = currentResult.rows[0];
 
-    // If status is confirmed, require payment_link
-    if (status === 'confirmed' && !payment_link) {
-      return res.status(400).json({ 
-        error: 'Payment link is required when confirming a booking' 
-      });
+    const validationError = validateBookingStatusChange(
+      currentBooking.status,
+      newStatus,
+      notes,
+      payment_link,
+      currentBooking.payment_link || null
+    );
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
     }
 
     const updateFields: string[] = ['status = $1'];
-    const params: any[] = [status];
+    const params: any[] = [newStatus];
     let paramCount = 2;
 
     if (notes !== undefined) {
@@ -263,7 +399,12 @@ router.put('/bookings/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Booking not found' });
     }
 
-    res.json(result.rows[0]);
+    const updatedBooking = result.rows[0];
+
+    // Sync vehicle subunit status based on updated booking status
+    await syncVehicleSubunitStatus(updatedBooking);
+
+    res.json(updatedBooking);
   } catch (error) {
     console.error('Error updating booking:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -275,8 +416,8 @@ router.get('/vehicles', async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
       `SELECT v.*, 
-       COUNT(vs.id) as subunit_count,
-       COUNT(CASE WHEN vs.status = 'available' THEN 1 END) as available_count,
+       COUNT(DISTINCT vs.id) as subunit_count,
+       COUNT(DISTINCT CASE WHEN vs.status = 'available' THEN vs.id END) as available_count,
        ARRAY_AGG(DISTINCT ve.extra_id) FILTER (WHERE ve.extra_id IS NOT NULL) as available_extras
        FROM vehicles v
        LEFT JOIN vehicle_subunits vs ON v.id = vs.vehicle_id
@@ -614,9 +755,10 @@ router.get('/availability', async (req: Request, res: Response) => {
         v.year,
         COUNT(DISTINCT vs.id) as total_subunits,
         COUNT(DISTINCT CASE WHEN vs.status = 'available' THEN vs.id END) as available_subunits,
-        COUNT(DISTINCT CASE WHEN vs.status = 'rented' THEN vs.id END) as rented_subunits,
-        COUNT(DISTINCT CASE WHEN vs.status = 'maintenance' THEN vs.id END) as maintenance_subunits,
-        COUNT(DISTINCT CASE WHEN vs.status = 'damaged' THEN vs.id END) as damaged_subunits
+        COUNT(DISTINCT CASE WHEN vs.status = 'reserved' THEN vs.id END) as reserved_subunits,
+        COUNT(DISTINCT CASE WHEN vs.status = 'out_on_rent' THEN vs.id END) as out_on_rent_subunits,
+        COUNT(DISTINCT CASE WHEN vs.status = 'returned' THEN vs.id END) as returned_subunits,
+        COUNT(DISTINCT CASE WHEN vs.status = 'maintenance' THEN vs.id END) as maintenance_subunits
       FROM vehicles v
       LEFT JOIN vehicle_subunits vs ON v.id = vs.vehicle_id
       WHERE 1=1
@@ -730,7 +872,7 @@ router.put('/vehicle-subunits/:id/status', async (req: Request, res: Response) =
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!['available', 'rented', 'maintenance', 'damaged'].includes(status)) {
+    if (!['available', 'reserved', 'out_on_rent', 'returned', 'maintenance'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
@@ -856,11 +998,11 @@ router.post(
         ]
       );
 
-      // Update subunit status if needed
+      // Update subunit status if needed - use maintenance instead of a dedicated damaged status
       if (repair_cost) {
         await pool.query(
           'UPDATE vehicle_subunits SET status = $1 WHERE id = $2',
-          ['damaged', vehicle_subunit_id]
+          ['maintenance', vehicle_subunit_id]
         );
       }
 
