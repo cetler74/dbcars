@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import { getVehicles, getLocations } from '@/lib/api';
 import VehicleCard from '@/components/VehicleCard';
 
@@ -233,8 +234,20 @@ function CarsPageContent() {
   return (
     <>
       {/* Hero Section */}
-      <section className="relative w-full h-[40vh] min-h-[300px] bg-gradient-to-br from-gray-900 via-gray-800 to-black overflow-hidden">
-        <div className="absolute inset-0 bg-black/40 z-10"></div>
+      <section className="relative w-full h-[40vh] min-h-[300px] overflow-hidden">
+        {/* Background Image */}
+        <div className="absolute inset-0">
+          <Image
+            src="/hero-cars.jpg"
+            alt="Luxury car collection"
+            fill
+            className="object-cover"
+            priority
+            quality={90}
+            sizes="100vw"
+          />
+          <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/50 to-black/60"></div>
+        </div>
         <div className="relative z-20 container mx-auto px-4 md:px-6 lg:px-12 h-full flex items-center">
           <div className="text-white">
             <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-tight mb-4">
@@ -596,10 +609,11 @@ function CarsPageContent() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredAndSortedVehicles.map((vehicle) => (
+            {filteredAndSortedVehicles.map((vehicle, index) => (
               <VehicleCard 
                 key={vehicle.id} 
                 vehicle={vehicle}
+                priority={index < 6}
                 searchParams={{
                   location: searchParams.get('location'),
                   available_from: searchParams.get('available_from'),

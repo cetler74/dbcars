@@ -51,12 +51,106 @@ router.get('/statistics', async (req: Request, res: Response) => {
        AND status = 'confirmed'`
     );
 
+    // Pending bookings
+    const pendingResult = await pool.query(
+      `SELECT COUNT(*) as count FROM bookings WHERE status = 'pending'`
+    );
+
+    // Active rentals
+    const activeResult = await pool.query(
+      `SELECT COUNT(*) as count FROM bookings WHERE status = 'active'`
+    );
+
+    // Total revenue (all time)
+    const totalRevenueResult = await pool.query(
+      `SELECT COALESCE(SUM(total_price), 0) as revenue 
+       FROM bookings WHERE status = 'completed'`
+    );
+
+    // Status breakdown
+    const statusBreakdownResult = await pool.query(
+      `SELECT status, COUNT(*) as count 
+       FROM bookings 
+       GROUP BY status`
+    );
+
+    // Recent bookings (last 5)
+    const recentBookingsResult = await pool.query(
+      `SELECT b.*, 
+       c.first_name, c.last_name, c.email,
+       v.make, v.model, v.year
+       FROM bookings b
+       JOIN customers c ON b.customer_id = c.id
+       JOIN vehicles v ON b.vehicle_id = v.id
+       ORDER BY b.created_at DESC
+       LIMIT 5`
+    );
+
+    // Upcoming pickups (next 7 days with details)
+    const upcomingPickupsResult = await pool.query(
+      `SELECT b.*, 
+       c.first_name, c.last_name, c.email, c.phone,
+       v.make, v.model, v.year,
+       pl.name as pickup_location_name
+       FROM bookings b
+       JOIN customers c ON b.customer_id = c.id
+       JOIN vehicles v ON b.vehicle_id = v.id
+       JOIN locations pl ON b.pickup_location_id = pl.id
+       WHERE b.pickup_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
+       AND b.status IN ('confirmed', 'active')
+       ORDER BY b.pickup_date ASC
+       LIMIT 10`
+    );
+
+    // Upcoming returns (next 7 days with details)
+    const upcomingReturnsResult = await pool.query(
+      `SELECT b.*, 
+       c.first_name, c.last_name, c.email, c.phone,
+       v.make, v.model, v.year,
+       dl.name as dropoff_location_name
+       FROM bookings b
+       JOIN customers c ON b.customer_id = c.id
+       JOIN vehicles v ON b.vehicle_id = v.id
+       JOIN locations dl ON b.dropoff_location_id = dl.id
+       WHERE b.dropoff_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
+       AND b.status IN ('active', 'completed')
+       ORDER BY b.dropoff_date ASC
+       LIMIT 10`
+    );
+
+    // Revenue comparison (this month vs last month)
+    const lastMonthRevenueResult = await pool.query(
+      `SELECT COALESCE(SUM(total_price), 0) as revenue 
+       FROM bookings 
+       WHERE status = 'completed' 
+       AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')`
+    );
+
+    const statusBreakdown: any = {};
+    statusBreakdownResult.rows.forEach((row: any) => {
+      statusBreakdown[row.status] = parseInt(row.count);
+    });
+
+    const thisMonthRevenue = parseFloat(revenueResult.rows[0].revenue);
+    const lastMonthRevenue = parseFloat(lastMonthRevenueResult.rows[0].revenue);
+    const revenueChange = lastMonthRevenue > 0 
+      ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue * 100).toFixed(1)
+      : '0';
+
     res.json({
       today_pickups: parseInt(pickupsResult.rows[0].count),
       today_returns: parseInt(returnsResult.rows[0].count),
-      monthly_revenue: parseFloat(revenueResult.rows[0].revenue),
+      monthly_revenue: thisMonthRevenue,
       monthly_bookings: parseInt(bookingsResult.rows[0].count),
       upcoming_reservations: parseInt(upcomingResult.rows[0].count),
+      pending_bookings: parseInt(pendingResult.rows[0].count),
+      active_rentals: parseInt(activeResult.rows[0].count),
+      total_revenue: parseFloat(totalRevenueResult.rows[0].revenue),
+      status_breakdown: statusBreakdown,
+      recent_bookings: recentBookingsResult.rows,
+      upcoming_pickups: upcomingPickupsResult.rows,
+      upcoming_returns: upcomingReturnsResult.rows,
+      revenue_change: revenueChange,
     });
   } catch (error) {
     console.error('Error fetching statistics:', error);
@@ -123,7 +217,7 @@ router.get('/bookings', async (req: Request, res: Response) => {
 router.put('/bookings/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { status, notes } = req.body;
+    const { status, notes, payment_link } = req.body;
 
     if (!status) {
       return res.status(400).json({ error: 'Status is required' });
@@ -134,6 +228,13 @@ router.put('/bookings/:id', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
+    // If status is confirmed, require payment_link
+    if (status === 'confirmed' && !payment_link) {
+      return res.status(400).json({ 
+        error: 'Payment link is required when confirming a booking' 
+      });
+    }
+
     const updateFields: string[] = ['status = $1'];
     const params: any[] = [status];
     let paramCount = 2;
@@ -141,6 +242,12 @@ router.put('/bookings/:id', async (req: Request, res: Response) => {
     if (notes !== undefined) {
       updateFields.push(`notes = $${paramCount}`);
       params.push(notes);
+      paramCount++;
+    }
+
+    if (payment_link !== undefined) {
+      updateFields.push(`payment_link = $${paramCount}`);
+      params.push(payment_link);
       paramCount++;
     }
 

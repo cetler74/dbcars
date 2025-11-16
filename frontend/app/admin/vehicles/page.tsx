@@ -222,7 +222,10 @@ export default function AdminVehiclesPage() {
         images: [...formData.images, ...newImages],
       });
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Error uploading image(s)');
+      console.error('Image upload error:', error);
+      // Extract error message from the error object
+      const errorMessage = error?.message || error?.response?.data?.error || 'Error uploading image(s)';
+      alert(errorMessage);
     } finally {
       setUploading(false);
       // Reset file input

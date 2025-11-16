@@ -540,9 +540,9 @@ export default function AdminAvailabilityPage() {
                       <span
                         className={`px-2 py-1 text-xs font-semibold rounded-full ${
                           booking.booking_status === 'confirmed'
-                            ? 'bg-blue-100 text-blue-800'
+                            ? 'bg-green-100 text-green-800'
                             : booking.booking_status === 'active'
-                              ? 'bg-green-100 text-green-800'
+                              ? 'bg-blue-100 text-blue-800'
                               : booking.booking_status === 'completed'
                                 ? 'bg-gray-100 text-gray-800'
                                 : 'bg-red-100 text-red-800'

@@ -212,24 +212,51 @@ export default function VehicleDetailPage() {
     ? Math.min(selectedImageIndex, vehicleImages.length - 1) 
     : 0;
 
+  // Get category label and color
+  const getCategoryLabel = (category: string) => {
+    switch (category) {
+      case 'luxury':
+        return 'Luxury';
+      case 'super_luxury':
+        return 'Super Luxury';
+      case 'exotic':
+        return 'Exotic';
+      default:
+        return category.charAt(0).toUpperCase() + category.slice(1);
+    }
+  };
+
+  const getCategoryColor = (category: string) => {
+    switch (category) {
+      case 'luxury':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'super_luxury':
+        return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'exotic':
+        return 'bg-orange-100 text-orange-800 border-orange-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
   return (
-    <div className="bg-white min-h-screen">
+    <div className="bg-gray-50 min-h-screen">
       <div className="container mx-auto px-4 py-6">
         {/* Breadcrumbs */}
-        <nav className="mb-4">
+        <nav className="mb-6">
           <div className="flex items-center gap-2 text-sm text-gray-600">
-            <Link href="/" className="hover:text-gray-900">Home</Link>
+            <Link href="/" className="hover:text-gray-900 transition-colors">Home</Link>
             <span>/</span>
-            <Link href="/cars" className="hover:text-gray-900">Fleet</Link>
+            <Link href="/cars" className="hover:text-gray-900 transition-colors">Fleet</Link>
             <span>/</span>
-            <span className="text-gray-900">{vehicle.make} {vehicle.model}</span>
+            <span className="text-gray-900 font-medium">{vehicle.make} {vehicle.model}</span>
           </div>
         </nav>
 
         {/* Back Button */}
         <button
           onClick={() => router.back()}
-          className="mb-6 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
+          className="mb-8 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all flex items-center gap-2 shadow-sm"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -245,15 +272,19 @@ export default function VehicleDetailPage() {
             {vehicleImages && vehicleImages.length > 0 ? (
               <div className="space-y-4">
                 {/* Main Image */}
-                <div className="relative w-full h-[500px] rounded-lg overflow-hidden">
+                <div className="relative w-full h-[420px] lg:h-[520px] rounded-xl overflow-hidden shadow-2xl bg-gray-900">
                   <Image
                     src={getImageUrl(vehicleImages[safeImageIndex]) || '/placeholder-car.jpg'}
                     alt={`${vehicle.make} ${vehicle.model} - Image ${safeImageIndex + 1}`}
                     fill
                     className="object-cover"
                     priority
+                    quality={90}
                     unoptimized
                   />
+                  {/* Gradient Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent"></div>
+                  
                   {/* Navigation Arrows */}
                   {vehicleImages.length > 1 && (
                     <>
@@ -263,7 +294,7 @@ export default function VehicleDetailPage() {
                             (prev) => (prev - 1 + vehicleImages.length) % vehicleImages.length
                           )
                         }
-                        className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors"
+                        className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-gray-900 p-3 rounded-full transition-all shadow-lg hover:scale-110 z-10"
                         aria-label="Previous image"
                       >
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -274,7 +305,7 @@ export default function VehicleDetailPage() {
                         onClick={() =>
                           setSelectedImageIndex((prev) => (prev + 1) % vehicleImages.length)
                         }
-                        className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors"
+                        className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-gray-900 p-3 rounded-full transition-all shadow-lg hover:scale-110 z-10"
                         aria-label="Next image"
                       >
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -285,7 +316,7 @@ export default function VehicleDetailPage() {
                   )}
                   {/* Image Counter */}
                   {vehicleImages.length > 1 && (
-                    <div className="absolute bottom-4 right-4 bg-black/60 text-white px-3 py-1 rounded text-sm">
+                    <div className="absolute bottom-4 right-4 bg-black/70 backdrop-blur-sm text-white px-4 py-2 rounded-lg text-sm font-medium">
                       {safeImageIndex + 1} / {vehicleImages.length}
                     </div>
                   )}
@@ -293,16 +324,16 @@ export default function VehicleDetailPage() {
 
                 {/* Thumbnail Gallery */}
                 {vehicleImages.length > 1 && (
-                  <div className="flex gap-2 overflow-x-auto pb-2">
+                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
                     {vehicleImages.map((image: string, index: number) => {
                       const isSelected = index === safeImageIndex;
                       return (
                         <div
                           key={index}
                           onClick={() => setSelectedImageIndex(index)}
-                          className={`relative w-24 h-24 flex-shrink-0 rounded overflow-hidden cursor-pointer border-2 transition-all ${
+                          className={`relative w-28 h-28 flex-shrink-0 rounded-lg overflow-hidden cursor-pointer border-2 transition-all shadow-md hover:shadow-lg ${
                             isSelected
-                              ? 'border-yellow-400 ring-2 ring-yellow-200'
+                              ? 'border-orange-500 ring-2 ring-orange-200 scale-105'
                               : 'border-gray-200 hover:border-gray-400'
                           }`}
                         >
@@ -313,9 +344,9 @@ export default function VehicleDetailPage() {
                             className="object-cover"
                           />
                           {index === 0 && (
-                            <div className="absolute top-1 left-1">
-                              <span className="bg-yellow-400 text-black text-xs px-1.5 py-0.5 rounded font-semibold">
-                                Featured Vehicle
+                            <div className="absolute top-2 left-2">
+                              <span className="bg-orange-500 text-white text-xs px-2 py-1 rounded font-semibold shadow-md">
+                                Cover
                               </span>
                             </div>
                           )}
@@ -326,41 +357,87 @@ export default function VehicleDetailPage() {
                 )}
               </div>
             ) : (
-              <div className="w-full h-[500px] bg-gray-200 rounded-lg flex items-center justify-center">
-                <span className="text-gray-400">No Image Available</span>
+              <div className="w-full h-[420px] lg:h-[520px] bg-gradient-to-br from-gray-200 to-gray-300 rounded-xl flex items-center justify-center shadow-lg">
+                <span className="text-gray-500 text-lg">No Image Available</span>
               </div>
             )}
 
-            {/* Vehicle Name and Specs */}
-            <div>
-              <h1 className="text-4xl font-bold mb-2">{vehicle.make} {vehicle.model}</h1>
-              <p className="text-gray-600 mb-4">{vehicle.make} • {vehicle.category}</p>
+            {/* Vehicle Header Card */}
+            <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getCategoryColor(vehicle.category)}`}>
+                      {getCategoryLabel(vehicle.category)}
+                    </span>
+                    {vehicle.year && (
+                      <span className="text-gray-500 text-sm">{vehicle.year}</span>
+                    )}
+                  </div>
+                  <h1 className="text-3xl md:text-4xl font-bold mb-2 text-gray-900">
+                    {vehicle.make} {vehicle.model}
+                  </h1>
+                  {vehicle.color && (
+                    <p className="text-gray-600 text-sm">Color: <span className="font-semibold capitalize">{vehicle.color}</span></p>
+                  )}
+                </div>
               
-              {/* Price */}
-              <div className="mb-4">
-                <span className="text-3xl font-bold">€{Number(vehicle.base_price_daily || 0).toFixed(2)}</span>
-                <span className="text-gray-600 ml-2">per day</span>
-                <p className="text-sm text-yellow-600 mt-1">Price varies by duration</p>
+                {/* Price Card */}
+                <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg p-4 text-white shadow-lg">
+                  <p className="text-xs font-medium mb-1 opacity-90">Starting from</p>
+                  <p className="text-2xl font-bold mb-1">€{Number(vehicle.base_price_daily || 0).toFixed(2)}</p>
+                  <p className="text-xs opacity-90">per day</p>
+                </div>
               </div>
 
-              {/* Quick Specs */}
-              <div className="flex items-center gap-6 text-sm text-gray-700 mb-6">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">{vehicle.seats || 'N/A'}</span>
-                  <span>Seats</span>
+              {/* Quick Specs Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-4 border-t border-gray-200">
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div className="flex justify-center mb-1">
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-lg font-bold text-gray-900">{vehicle.seats || 'N/A'}</p>
+                  <p className="text-xs text-gray-600 mt-0.5">Seats</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold capitalize">{vehicle.transmission || 'N/A'}</span>
-                  <span>Transmission</span>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div className="flex justify-center mb-1">
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
+                  <p className="text-base font-bold text-gray-900 capitalize">{vehicle.transmission || 'N/A'}</p>
+                  <p className="text-xs text-gray-600 mt-0.5">Transmission</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold capitalize">{vehicle.fuel_type || 'N/A'}</span>
-                  <span>Fuel Type</span>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div className="flex justify-center mb-1">
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <p className="text-base font-bold text-gray-900 capitalize">{vehicle.fuel_type || 'N/A'}</p>
+                  <p className="text-xs text-gray-600 mt-0.5">Fuel Type</p>
                 </div>
-                {vehicle.power && (
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">{vehicle.power}</span>
-                    <span>HP</span>
+                {vehicle.power ? (
+                  <div className="bg-gray-50 rounded-lg p-3 text-center">
+                    <div className="flex justify-center mb-1">
+                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                      </svg>
+                    </div>
+                    <p className="text-lg font-bold text-gray-900">{vehicle.power}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">Horsepower</p>
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 rounded-lg p-3 text-center">
+                    <div className="flex justify-center mb-1">
+                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <p className="text-base font-bold text-gray-900">{vehicle.year || 'N/A'}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">Year</p>
                   </div>
                 )}
               </div>
@@ -368,15 +445,17 @@ export default function VehicleDetailPage() {
 
             {/* Features */}
             {vehicleFeatures && vehicleFeatures.length > 0 && (
-              <div>
-                <h2 className="text-2xl font-semibold mb-4">Features</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="bg-white rounded-xl shadow-lg p-8 border border-gray-100">
+                <h2 className="text-3xl font-bold mb-6 text-gray-900">Features & Amenities</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {vehicleFeatures.map((feature: string, index: number) => (
-                    <div key={index} className="flex items-center gap-2 text-gray-700">
-                      <svg className="w-5 h-5 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    <div key={index} className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
+                      <div className="flex-shrink-0 w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                        <svg className="w-5 h-5 text-orange-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      <span>{feature}</span>
+                      </div>
+                      <span className="text-gray-700 font-medium">{feature}</span>
                     </div>
                   ))}
                 </div>
@@ -385,25 +464,37 @@ export default function VehicleDetailPage() {
 
             {/* Description */}
             {vehicle.description && (
-              <div>
-                <h2 className="text-2xl font-semibold mb-4">Description</h2>
-                <p className="text-gray-700 leading-relaxed">{vehicle.description}</p>
+              <div className="bg-white rounded-xl shadow-lg p-8 border border-gray-100">
+                <h2 className="text-3xl font-bold mb-6 text-gray-900">About This Vehicle</h2>
+                <p className="text-gray-700 leading-relaxed text-lg">{vehicle.description}</p>
               </div>
             )}
           </div>
 
           {/* Right Side - Sticky Booking Widget */}
-          <div className="lg:w-96 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
-            <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-6 space-y-6">
+          <div className="lg:w-96 lg:sticky lg:top-32 lg:self-start lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
+            <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 space-y-6">
               {/* Get Detailed Quote Section */}
-              <div className="bg-yellow-50 p-6 rounded-lg space-y-4">
-                <h3 className="text-xl font-semibold">Get Detailed Quote</h3>
-                <p className="text-sm text-gray-700">Experience luxury with our premium concierge service</p>
+              <div className="space-y-4">
+                <div className="pb-4 border-b border-gray-100">
+                  <h3 className="text-2xl font-semibold text-gray-900 mb-1">Get Detailed Quote</h3>
+                  <p className="text-sm text-gray-500">
+                    Experience luxury with our premium concierge service.
+                  </p>
+                </div>
                 
-                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleCalculatePrice(); }}>
+                <form
+                  className="space-y-4"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleCalculatePrice();
+                  }}
+                >
                   {/* Vehicle (pre-filled) */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle</label>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                      Vehicle
+                    </label>
                     <input
                       type="text"
                       value={`${vehicle.make} ${vehicle.model}`}
@@ -414,14 +505,14 @@ export default function VehicleDetailPage() {
 
                   {/* Start Date */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
                       Start Date <span className="text-red-500">*</span>
                     </label>
                     <DatePicker
                       selected={pickupDate}
                       onChange={(date: Date | null) => setPickupDate(date)}
                       minDate={new Date()}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                       dateFormat="dd/MM/yyyy"
                       placeholderText="dd/mm/yyyy"
                       required
@@ -430,14 +521,14 @@ export default function VehicleDetailPage() {
 
                   {/* End Date */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
                       End Date <span className="text-red-500">*</span>
                     </label>
                     <DatePicker
                       selected={dropoffDate}
                       onChange={(date: Date | null) => setDropoffDate(date)}
                       minDate={pickupDate || new Date()}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                       dateFormat="dd/MM/yyyy"
                       placeholderText="dd/mm/yyyy"
                       required
@@ -446,14 +537,14 @@ export default function VehicleDetailPage() {
 
                   {/* Pickup Location */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
                       Pickup Location <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <select
                         value={pickupLocation}
                         onChange={(e) => setPickupLocation(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 appearance-none bg-white"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 appearance-none bg-white"
                         required
                       >
                         <option value="">Select pickup region</option>
@@ -463,8 +554,35 @@ export default function VehicleDetailPage() {
                           </option>
                         ))}
                       </select>
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dropoff Location */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                      Dropoff Location <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={dropoffLocation}
+                        onChange={(e) => setDropoffLocation(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 appearance-none bg-white"
+                        required
+                      >
+                        <option value="">Select dropoff region</option>
+                        {locations.map((loc) => (
+                          <option key={loc.id} value={loc.id}>
+                            {loc.name} - {loc.city}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
@@ -474,11 +592,16 @@ export default function VehicleDetailPage() {
                   {/* Calculate Button */}
                   <button
                     type="submit"
-                    disabled={!pickupDate || !dropoffDate || !pickupLocation}
-                    className="w-full bg-yellow-400 hover:bg-yellow-500 disabled:bg-gray-300 disabled:cursor-not-allowed text-black font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    disabled={!pickupDate || !dropoffDate || !pickupLocation || !dropoffLocation}
+                    className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
                     </svg>
                     Calculate My Price
                   </button>
@@ -490,8 +613,11 @@ export default function VehicleDetailPage() {
 
         {/* Similar Vehicles - Separate Section */}
         {similarVehicles.length > 0 && (
-          <div className="mt-12 w-full">
-            <h2 className="text-2xl font-semibold mb-6">Similar Vehicles</h2>
+          <div className="mt-16 w-full">
+            <div className="mb-8">
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">Similar Vehicles</h2>
+              <p className="text-gray-600">Explore other vehicles in the same category</p>
+            </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {similarVehicles.map((v: any) => (
                             <VehicleCard 

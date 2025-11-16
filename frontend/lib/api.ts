@@ -126,8 +126,8 @@ export const getAdminBookings = async (filters?: {
   return response.data;
 };
 
-export const updateBookingStatus = async (id: string, status: string, notes?: string) => {
-  const response = await api.put(`/admin/bookings/${id}`, { status, notes });
+export const updateBookingStatus = async (id: string, status: string, notes?: string, payment_link?: string) => {
+  const response = await api.put(`/admin/bookings/${id}`, { status, notes, payment_link });
   return response.data;
 };
 
@@ -196,16 +196,35 @@ export const uploadImage = async (file: File): Promise<string> => {
   const formData = new FormData();
   formData.append('image', file);
 
+  try {
   const response = await axios.post(`${API_URL}/upload/image`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
       Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
     },
+      timeout: 30000, // 30 seconds timeout for file uploads
   });
+
+    if (!response.data || !response.data.url) {
+      throw new Error('Invalid response from server');
+    }
 
   // Return full URL
   const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3001';
   return `${baseUrl}${response.data.url}`;
+  } catch (error: any) {
+    console.error('Upload error:', error);
+    if (error.response) {
+      // Server responded with error status
+      throw new Error(error.response.data?.error || error.response.data?.message || 'Failed to upload image');
+    } else if (error.request) {
+      // Request was made but no response received
+      throw new Error('Network error: Could not connect to server');
+    } else {
+      // Something else happened
+      throw new Error(error.message || 'Failed to upload image');
+    }
+  }
 };
 
 export const uploadImages = async (files: File[]): Promise<string[]> => {
@@ -214,16 +233,35 @@ export const uploadImages = async (files: File[]): Promise<string[]> => {
     formData.append('images', file);
   });
 
+  try {
   const response = await axios.post(`${API_URL}/upload/images`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
       Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
     },
+      timeout: 60000, // 60 seconds timeout for multiple file uploads
   });
+
+    if (!response.data || !response.data.urls || !Array.isArray(response.data.urls)) {
+      throw new Error('Invalid response from server');
+    }
 
   // Return full URLs
   const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3001';
   return response.data.urls.map((url: string) => `${baseUrl}${url}`);
+  } catch (error: any) {
+    console.error('Upload error:', error);
+    if (error.response) {
+      // Server responded with error status
+      throw new Error(error.response.data?.error || error.response.data?.message || 'Failed to upload images');
+    } else if (error.request) {
+      // Request was made but no response received
+      throw new Error('Network error: Could not connect to server');
+    } else {
+      // Something else happened
+      throw new Error(error.message || 'Failed to upload images');
+    }
+  }
 };
 
 // Customers

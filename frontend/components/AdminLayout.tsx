@@ -3,11 +3,13 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { getAdminBookings } from '@/lib/api';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<any>(null);
+  const [pendingBookingsCount, setPendingBookingsCount] = useState<number>(0);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -22,6 +24,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       setUser(JSON.parse(userStr));
     }
   }, [router]);
+
+  useEffect(() => {
+    const loadPendingBookings = async () => {
+      try {
+        const bookings = await getAdminBookings({ status: 'pending' });
+        setPendingBookingsCount(bookings.length);
+      } catch (error) {
+        console.error('Error loading pending bookings:', error);
+      }
+    };
+
+    if (user) {
+      loadPendingBookings();
+      // Refresh every 30 seconds
+      const interval = setInterval(loadPendingBookings, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
 
   const handleLogout = () => {
     localStorage.removeItem('auth_token');
@@ -48,11 +68,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Left Sidebar */}
-      <aside className="w-64 bg-white shadow-lg fixed top-0 left-0 h-screen z-40 flex flex-col overflow-hidden">
+      <aside className="w-64 bg-black shadow-lg fixed top-0 left-0 h-screen z-40 flex flex-col overflow-hidden">
         {/* Logo/Header */}
-        <div className="p-4 border-b border-gray-200 flex-shrink-0">
+        <div className="p-4 border-b border-neutral-800 flex-shrink-0">
           <div className="flex items-center justify-center mb-3">
-            <Link href="/admin/dashboard" className="text-lg font-bold text-gray-900">
+            <Link href="/admin/dashboard" className="text-lg font-bold text-white">
               Admin Panel
             </Link>
           </div>
@@ -73,17 +93,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <ul className="space-y-1">
               {navItems.map((item) => {
                 const isActive = pathname === item.href;
+                const showNotification = item.href === '/admin/bookings' && pendingBookingsCount > 0;
                 return (
                   <li key={item.href}>
                     <Link
                       href={item.href}
-                      className={`flex items-center px-4 py-2.5 rounded-lg transition-colors text-sm ${
+                      className={`flex items-center justify-between px-4 py-2.5 rounded-lg transition-colors text-sm relative ${
                         isActive
-                          ? 'bg-gray-900 text-white'
-                          : 'text-gray-700 hover:bg-gray-100'
+                          ? 'bg-neutral-900 text-white'
+                          : 'text-neutral-300 hover:bg-neutral-900 hover:text-white'
                       }`}
                     >
                       <span className="font-medium">{item.label}</span>
+                      {showNotification && (
+                        <span className="ml-2 bg-red-600 text-white text-xs font-bold rounded-full h-5 px-1.5 flex items-center justify-center min-w-[20px]">
+                          {pendingBookingsCount > 99 ? '99+' : pendingBookingsCount}
+                        </span>
+                      )}
                     </Link>
                   </li>
                 );
@@ -93,10 +119,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </nav>
 
         {/* User Info & Logout - Fixed at bottom */}
-        <div className="p-4 border-t border-gray-200 flex-shrink-0 bg-white">
+        <div className="p-4 border-t border-neutral-800 flex-shrink-0 bg-black">
           <div className="mb-3">
-            <p className="text-xs text-gray-600 mb-1">Logged in as</p>
-            <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
+            <p className="text-xs text-neutral-400 mb-1">Logged in as</p>
+            <p className="text-sm font-medium text-white truncate">{user.name}</p>
           </div>
           <button
             onClick={handleLogout}

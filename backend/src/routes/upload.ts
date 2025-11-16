@@ -12,17 +12,61 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+// Helper function to sanitize and truncate filename
+const sanitizeFilename = (filename: string, maxLength: number = 50): string => {
+  // Remove extension
+  const ext = path.extname(filename);
+  let name = path.basename(filename, ext);
+  
+  // Remove special characters and replace spaces/special chars with hyphens
+  name = name
+    .replace(/[^a-zA-Z0-9-_]/g, '-') // Replace special chars with hyphens
+    .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+    .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+  
+  // Truncate to max length
+  if (name.length > maxLength) {
+    name = name.substring(0, maxLength);
+  }
+  
+  return name || 'image'; // Fallback to 'image' if name becomes empty
+};
+
 // Configure multer storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
-    // Generate unique filename: timestamp-random-originalname
+    try {
+      // Generate unique filename: sanitized-name-timestamp-random.ext
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+      const ext = (path.extname(file.originalname) || '.jpg').toLowerCase().substring(0, 5); // Limit ext to 5 chars
+      
+      // Sanitize filename with a very conservative max length (30 chars)
+      // uniqueSuffix is ~25 chars, ext is ~5 chars, hyphen is 1 char
+      // Total: ~61 chars, well under 255 limit
+      let sanitizedName = sanitizeFilename(file.originalname, 30);
+      
+      // Final safety: ensure total length is safe
+      const filename = `${sanitizedName}-${uniqueSuffix}${ext}`;
+      
+      // Double-check length (should never exceed 100 chars with these limits)
+      if (filename.length > 100) {
+        // Emergency truncation - this should never happen but just in case
+        const maxNameLength = 100 - uniqueSuffix.length - ext.length - 1;
+        sanitizedName = sanitizedName.substring(0, Math.max(5, maxNameLength));
+        cb(null, `${sanitizedName}-${uniqueSuffix}${ext}`);
+      } else {
+        cb(null, filename);
+      }
+    } catch (error: any) {
+      // If filename generation fails for any reason, use a simple timestamp-based name
+      console.error('Error generating filename, using fallback:', error);
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    const name = path.basename(file.originalname, ext);
-    cb(null, `${name}-${uniqueSuffix}${ext}`);
+      const ext = (path.extname(file.originalname) || '.jpg').toLowerCase().substring(0, 5);
+      cb(null, `img-${uniqueSuffix}${ext}`);
+    }
   },
 });
 
@@ -48,12 +92,44 @@ const upload = multer({
   fileFilter: fileFilter,
 });
 
+// Wrapper to handle multer errors
+const handleUpload = (uploadMiddleware: any) => {
+  return (req: Request, res: Response, next: express.NextFunction) => {
+    uploadMiddleware(req, res, (err: any) => {
+      if (err) {
+        console.error('Upload error:', err);
+        if (err instanceof multer.MulterError) {
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ error: 'File size too large. Maximum size is 5MB.' });
+          }
+          if (err.code === 'LIMIT_FILE_COUNT') {
+            return res.status(400).json({ error: 'Too many files. Maximum is 10 files.' });
+          }
+          if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+            return res.status(400).json({ error: 'Unexpected file field name.' });
+          }
+          return res.status(400).json({ error: err.message || 'File upload error' });
+        }
+        // Handle filesystem errors (like ENAMETOOLONG)
+        if (err.code === 'ENAMETOOLONG' || err.message?.includes('ENAMETOOLONG') || err.message?.includes('name too long')) {
+          console.error('Filename too long error:', err);
+          return res.status(400).json({ error: 'Filename is too long. The file has been automatically renamed, but please try uploading again with a shorter filename.' });
+        }
+        // Handle other errors (like fileFilter errors)
+        console.error('Other upload error:', err);
+        return res.status(400).json({ error: err.message || 'File upload error' });
+      }
+      next();
+    });
+  };
+};
+
 // Upload single image (admin only)
 router.post(
   '/image',
   authenticate,
   requireAdmin,
-  upload.single('image'),
+  handleUpload(upload.single('image')),
   (req: Request, res: Response) => {
     try {
       if (!req.file) {
@@ -75,7 +151,7 @@ router.post(
   '/images',
   authenticate,
   requireAdmin,
-  upload.array('images', 10), // Max 10 images
+  handleUpload(upload.array('images', 10)), // Max 10 images
   (req: Request, res: Response) => {
     try {
       if (!req.files || (req.files as Express.Multer.File[]).length === 0) {

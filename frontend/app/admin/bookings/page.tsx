@@ -10,6 +10,9 @@ export default function AdminBookingsPage() {
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
   const [bookingDetails, setBookingDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentLink, setPaymentLink] = useState('');
+  const [bookingToConfirm, setBookingToConfirm] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     status: '',
     vehicle_id: '',
@@ -33,16 +36,42 @@ export default function AdminBookingsPage() {
     }
   };
 
-  const handleStatusUpdate = async (bookingId: string, newStatus: string) => {
+  const handleStatusUpdate = async (bookingId: string, newStatus: string, paymentLinkValue?: string) => {
     try {
-      await updateBookingStatus(bookingId, newStatus);
+      await updateBookingStatus(bookingId, newStatus, undefined, paymentLinkValue);
       loadBookings();
       if (selectedBooking?.id === bookingId) {
         // Reload details if viewing this booking
         handleViewBooking(selectedBooking);
       }
-    } catch (error) {
-      alert('Error updating booking status');
+      setShowPaymentModal(false);
+      setPaymentLink('');
+      setBookingToConfirm(null);
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || 'Error updating booking status';
+      alert(errorMessage);
+    }
+  };
+
+  const handleConfirmClick = (bookingId: string) => {
+    setBookingToConfirm(bookingId);
+    setPaymentLink('');
+    setShowPaymentModal(true);
+  };
+
+  const handleCancelClick = (bookingId: string) => {
+    if (confirm('Are you sure you want to cancel this booking?')) {
+      handleStatusUpdate(bookingId, 'cancelled');
+    }
+  };
+
+  const handlePaymentSubmit = () => {
+    if (!paymentLink.trim()) {
+      alert('Please enter a payment link');
+      return;
+    }
+    if (bookingToConfirm) {
+      handleStatusUpdate(bookingToConfirm, 'confirmed', paymentLink);
     }
   };
 
@@ -179,6 +208,8 @@ export default function AdminBookingsPage() {
                       className={`px-2 py-1 text-xs font-semibold rounded-full ${
                         booking.status === 'completed'
                           ? 'bg-green-100 text-green-800'
+                          : booking.status === 'confirmed'
+                          ? 'bg-green-100 text-green-800'
                           : booking.status === 'active'
                           ? 'bg-blue-100 text-blue-800'
                           : booking.status === 'cancelled'
@@ -190,21 +221,24 @@ export default function AdminBookingsPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <select
-                      value={booking.status}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        handleStatusUpdate(booking.id, e.target.value);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="px-3 py-1 border border-gray-300 rounded-lg text-sm"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="confirmed">Confirmed</option>
-                      <option value="active">Active</option>
-                      <option value="completed">Completed</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
+                    {booking.status === 'pending' ? (
+                      <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => handleConfirmClick(booking.id)}
+                          className="px-4 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => handleCancelClick(booking.id)}
+                          className="px-4 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-gray-500 text-sm">-</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -251,6 +285,8 @@ export default function AdminBookingsPage() {
                           <span
                             className={`px-2 py-1 text-xs font-semibold rounded-full ${
                               bookingDetails.status === 'completed'
+                                ? 'bg-green-100 text-green-800'
+                                : bookingDetails.status === 'confirmed'
                                 ? 'bg-green-100 text-green-800'
                                 : bookingDetails.status === 'active'
                                 ? 'bg-blue-100 text-blue-800'
@@ -390,26 +426,83 @@ export default function AdminBookingsPage() {
                   )}
 
                   {/* Update Status */}
-                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <h3 className="text-xl font-bold mb-4 text-gray-900">Update Status</h3>
-                    <select
-                      value={bookingDetails.status}
-                      onChange={(e) => handleStatusUpdate(bookingDetails.id, e.target.value)}
-                      className="px-6 py-3 border-2 border-gray-300 rounded-lg text-lg font-medium focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="confirmed">Confirmed</option>
-                      <option value="active">Active</option>
-                      <option value="completed">Completed</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                  </div>
+                  {bookingDetails.status === 'pending' && (
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                      <h3 className="text-xl font-bold mb-4 text-gray-900">Actions</h3>
+                      <div className="flex gap-4">
+                        <button
+                          onClick={() => {
+                            setBookingToConfirm(bookingDetails.id);
+                            setPaymentLink('');
+                            setShowPaymentModal(true);
+                          }}
+                          className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-lg font-semibold"
+                        >
+                          Confirm Booking
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('Are you sure you want to cancel this booking?')) {
+                              handleStatusUpdate(bookingDetails.id, 'cancelled');
+                            }
+                          }}
+                          className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-lg font-semibold"
+                        >
+                          Cancel Booking
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-16">
                   <p className="text-gray-600 text-lg">Failed to load booking details</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Link Modal */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-2xl font-bold mb-4 text-gray-900">Confirm Booking</h3>
+            <p className="text-gray-600 mb-4">
+              Please enter the payment link to send to the customer. An email will be automatically sent with the payment link.
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-900 mb-2">
+                Payment Link <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="url"
+                value={paymentLink}
+                onChange={(e) => setPaymentLink(e.target.value)}
+                placeholder="https://payment.example.com/..."
+                className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handlePaymentSubmit}
+                disabled={!paymentLink.trim()}
+                className="flex-1 bg-green-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              >
+                Confirm & Send Email
+              </button>
+              <button
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setPaymentLink('');
+                  setBookingToConfirm(null);
+                }}
+                className="flex-1 bg-gray-200 text-gray-900 px-6 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

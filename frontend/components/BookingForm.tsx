@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import DatePicker from 'react-datepicker';
@@ -19,6 +19,7 @@ interface BookingFormProps {
   initialDropoffDate?: Date | null;
   initialPickupLocation?: string;
   initialDropoffLocation?: string;
+  onStepChange?: (step: number) => void;
 }
 
 export default function BookingForm({ 
@@ -26,10 +27,33 @@ export default function BookingForm({
   initialPickupDate = null,
   initialDropoffDate = null,
   initialPickupLocation = '',
-  initialDropoffLocation = ''
+  initialDropoffLocation = '',
+  onStepChange
 }: BookingFormProps) {
   const router = useRouter();
   const [step, setStep] = useState(1);
+  const hasNotifiedInitial = useRef(false);
+  
+  // Helper function to change step and notify parent
+  const changeStep = (newStep: number) => {
+    console.log('changeStep called with:', newStep, 'current step:', step);
+    setStep((prevStep) => {
+      console.log('setStep called, prev:', prevStep, 'new:', newStep);
+      return newStep;
+    });
+    if (onStepChange) {
+      console.log('Calling onStepChange with:', newStep);
+      onStepChange(newStep);
+    }
+  };
+  
+  // Notify parent of initial step only once
+  useEffect(() => {
+    if (onStepChange && !hasNotifiedInitial.current) {
+      onStepChange(step);
+      hasNotifiedInitial.current = true;
+    }
+  }, [onStepChange]);
   const [loading, setLoading] = useState(false);
   const [locations, setLocations] = useState<any[]>([]);
   const [extras, setExtras] = useState<any[]>([]);
@@ -62,6 +86,10 @@ export default function BookingForm({
   useEffect(() => {
     loadInitialData();
   }, []);
+
+  useEffect(() => {
+    console.log('Step changed to:', step);
+  }, [step]);
 
   useEffect(() => {
     if (formData.pickup_date && formData.dropoff_date) {
@@ -287,9 +315,12 @@ export default function BookingForm({
     }
   };
 
+  console.log('BookingForm render - current step:', step);
+  
   return (
-    <div className="bg-white p-8 rounded-lg shadow-lg">
+    <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 h-full flex flex-col w-full justify-center">
       <h2 className="text-2xl font-bold mb-6">Book Your Vehicle</h2>
+      <div className="mb-2 text-sm text-gray-500">Current Step: {step}</div>
 
       {/* Step 1: Dates and Locations */}
       {step === 1 && (
@@ -424,7 +455,19 @@ export default function BookingForm({
 
           <button
             type="button"
-            onClick={() => {
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              
+              console.log('Continue to Extras clicked', {
+                dropoff_location_id: formData.dropoff_location_id,
+                pickup_location_id: formData.pickup_location_id,
+                pickup_date: formData.pickup_date,
+                dropoff_date: formData.dropoff_date,
+                availability: availability,
+                currentStep: step
+              });
+              
               if (!formData.dropoff_location_id) {
                 alert('Please select a drop-off location before continuing');
                 return;
@@ -437,13 +480,15 @@ export default function BookingForm({
                 alert('Please select both pick-up and drop-off dates before continuing');
                 return;
               }
-              if (!availability?.available) {
+              if (availability && !availability.available) {
                 alert('Vehicle is not available for the selected dates. Please choose different dates.');
                 return;
               }
-              setStep(2);
+              
+              console.log('All validations passed, changing to step 2');
+              changeStep(2);
             }}
-            className="w-full bg-gray-900 text-white px-8 py-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors"
+            className="w-full bg-orange-500 text-white px-8 py-3 rounded-lg font-semibold hover:bg-orange-600 transition-colors"
           >
             Continue to Extras
           </button>
@@ -454,42 +499,25 @@ export default function BookingForm({
       {step === 2 && (
         <div className="space-y-6">
           <h3 className="text-xl font-semibold">Additional Services</h3>
-          <div className="space-y-4">
+          
+          <div className="flex flex-col lg:flex-row gap-6">
+            {/* Left Side - Extras List */}
+            <div className="w-full lg:w-[70%] space-y-4">
             {extras.map((extra) => {
               const isSelected = formData.selected_extras.some((e) => e.id === extra.id);
-              const getImageUrl = (url: string | null) => {
-                if (!url) return null;
-                if (url.startsWith('http://') || url.startsWith('https://')) {
-                  return url;
-                }
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-                const baseUrl = apiUrl.replace('/api', '');
-                return `${baseUrl}${url.startsWith('/') ? url : `/${url}`}`;
-              };
               return (
                 <label
                   key={extra.id}
                   className={`flex items-center gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                    isSelected ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 hover:bg-gray-50'
+                      isSelected ? 'border-gray-400 bg-gray-50' : 'border-gray-200 hover:bg-gray-50'
                   }`}
                 >
                   <input
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => handleExtraToggle(extra.id)}
-                    className="w-5 h-5 text-yellow-400 border-gray-300 rounded focus:ring-yellow-400"
+                      className="w-5 h-5 text-gray-600 border-gray-300 rounded focus:ring-gray-400"
                   />
-                  {extra.cover_image && (
-                    <div className="relative w-24 h-24 flex-shrink-0 rounded overflow-hidden">
-                      <Image
-                        src={getImageUrl(extra.cover_image) || ''}
-                        alt={extra.name}
-                        fill
-                        className="object-cover"
-                        unoptimized
-                      />
-                    </div>
-                  )}
                   <div className="flex-1">
                     <span className="font-medium text-gray-900 block">{extra.name}</span>
                     {extra.description && (
@@ -503,82 +531,128 @@ export default function BookingForm({
                 </label>
               );
             })}
-          </div>
-
-          {/* Coupon Code */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Coupon Code (Optional)
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={couponCode}
-                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                placeholder="Enter coupon code"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900"
-              />
-              <button
-                type="button"
-                onClick={handleCouponValidate}
-                className="px-6 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
-              >
-                Apply
-              </button>
             </div>
-            {couponError && (
-              <p className="text-red-600 text-sm mt-2">{couponError}</p>
-            )}
-            {coupon && (
-              <p className="text-green-600 text-sm mt-2">
-                Coupon applied: {coupon.code} ({coupon.discount_value}
-                {coupon.discount_type === 'percentage' ? '%' : '€'} off)
-              </p>
-            )}
-          </div>
 
-          {pricing && (
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="font-semibold mb-2">Pricing Summary</h3>
-              <div className="space-y-1">
-                <div className="flex justify-between">
-                  <span>Base Price ({pricing.days} days):</span>
-                  <span>€{pricing.base_price.toFixed(2)}</span>
+            {/* Right Side - Vehicle Image and Pricing Summary */}
+            <div className="w-full lg:w-[35%] flex-shrink-0 space-y-4">
+              {/* Vehicle Image */}
+              {(() => {
+                const getImageUrl = (url: string | null) => {
+                  if (!url) return null;
+                  if (url.startsWith('http://') || url.startsWith('https://')) {
+                    return url;
+                  }
+                  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+                  const baseUrl = apiUrl.replace('/api', '');
+                  return `${baseUrl}${url.startsWith('/') ? url : `/${url}`}`;
+                };
+                const vehicleImages = Array.isArray(vehicle.images) ? vehicle.images : vehicle.images ? [vehicle.images] : [];
+                const mainImage = vehicleImages.length > 0 ? vehicleImages[0] : null;
+                
+                return (
+                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                    {mainImage ? (
+                      <div className="relative w-full h-48">
+                        <Image
+                          src={getImageUrl(mainImage) || '/placeholder-car.jpg'}
+                          alt={`${vehicle.make} ${vehicle.model}`}
+                          fill
+                          className="object-cover"
+                          unoptimized
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-full h-48 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                        <span className="text-gray-500 text-sm">No Image</span>
+                      </div>
+                    )}
+                    <div className="p-4">
+                      <h4 className="font-bold text-gray-900">{vehicle.make} {vehicle.model}</h4>
+                      {vehicle.year && (
+                        <p className="text-sm text-gray-600">{vehicle.year}</p>
+                      )}
                 </div>
-                {pricing.extras_price > 0 && (
-                  <div className="flex justify-between">
-                    <span>Extras:</span>
-                    <span>€{pricing.extras_price.toFixed(2)}</span>
                   </div>
-                )}
-                {pricing.discount_amount > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span>Discount:</span>
-                    <span>-€{pricing.discount_amount.toFixed(2)}</span>
+                );
+              })()}
+
+              {/* Pricing Summary */}
+              {pricing && (
+                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                  <h3 className="font-semibold mb-4 text-lg">Pricing Summary</h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Base Price ({pricing.days} days):</span>
+                      <span className="font-medium">€{pricing.base_price.toFixed(2)}</span>
+                    </div>
+                    {pricing.extras_price > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Extras:</span>
+                        <span className="font-medium">€{pricing.extras_price.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {pricing.discount_amount > 0 && (
+                      <div className="flex justify-between text-sm text-green-600">
+                        <span>Discount:</span>
+                        <span className="font-medium">-€{pricing.discount_amount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold text-xl border-t border-gray-300 pt-3 mt-3">
+                      <span>Total:</span>
+                      <span className="text-orange-600">€{pricing.total_price.toFixed(2)}</span>
+                    </div>
                   </div>
-                )}
-                <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
-                  <span>Total:</span>
-                  <span>€{pricing.total_price.toFixed(2)}</span>
                 </div>
+              )}
+
+              {/* Coupon Code - Separate container below pricing summary */}
+              <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Coupon Code (Optional)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                    placeholder="Enter coupon code"
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCouponValidate}
+                    className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 text-sm"
+                  >
+                    Apply
+                  </button>
+                </div>
+                {couponError && (
+                  <p className="text-red-600 text-xs mt-2">{couponError}</p>
+                )}
+                {coupon && (
+                  <p className="text-green-600 text-xs mt-2">
+                    Coupon applied: {coupon.code} ({coupon.discount_value}
+                    {coupon.discount_type === 'percentage' ? '%' : '€'} off)
+                  </p>
+                )}
               </div>
             </div>
-          )}
+          </div>
 
           <div className="flex gap-4">
             <button
               type="button"
-              onClick={() => setStep(1)}
+              onClick={() => changeStep(1)}
               className="flex-1 bg-gray-200 text-gray-900 px-8 py-3 rounded-lg font-semibold hover:bg-gray-300"
             >
               Back
             </button>
             <button
               type="button"
-              onClick={() => setStep(3)}
-              className="flex-1 bg-gray-900 text-white px-8 py-3 rounded-lg font-semibold hover:bg-gray-800"
+              onClick={() => changeStep(3)}
+              className="flex-1 bg-orange-500 text-white px-8 py-3 rounded-lg font-semibold hover:bg-orange-600"
             >
-              Continue to Customer Info
+              Checkout
             </button>
           </div>
         </div>
@@ -589,6 +663,7 @@ export default function BookingForm({
         <form onSubmit={handleSubmit} className="space-y-6">
           <h3 className="text-xl font-semibold">Customer Information</h3>
 
+          {/* Customer Information Form - Full Width */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -689,38 +764,169 @@ export default function BookingForm({
             </div>
           </div>
 
-          {pricing && (
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="font-semibold mb-2">Final Pricing</h3>
-              <div className="space-y-1">
-                <div className="flex justify-between">
-                  <span>Base Price ({pricing.days} days):</span>
-                  <span>€{pricing.base_price.toFixed(2)}</span>
-                </div>
-                {pricing.extras_price > 0 && (
-                  <div className="flex justify-between">
-                    <span>Extras:</span>
-                    <span>€{pricing.extras_price.toFixed(2)}</span>
-                  </div>
-                )}
-                {pricing.discount_amount > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span>Discount:</span>
-                    <span>-€{pricing.discount_amount.toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
-                  <span>Total:</span>
-                  <span>€{pricing.total_price.toFixed(2)}</span>
-                </div>
-              </div>
+          {/* Vehicle Image, Name, Pricing Summary, and Extras - Stacked Below */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Vehicle Image and Name */}
+            <div className="lg:col-span-1 space-y-4">
+              {(() => {
+                const getImageUrl = (url: string | null) => {
+                  if (!url) return null;
+                  if (url.startsWith('http://') || url.startsWith('https://')) {
+                    return url;
+                  }
+                  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+                  const baseUrl = apiUrl.replace('/api', '');
+                  return `${baseUrl}${url.startsWith('/') ? url : `/${url}`}`;
+                };
+                const vehicleImages = Array.isArray(vehicle.images) ? vehicle.images : vehicle.images ? [vehicle.images] : [];
+                const mainImage = vehicleImages.length > 0 ? vehicleImages[0] : null;
+                
+                return (
+                  <>
+                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                      {mainImage ? (
+                        <div className="relative w-full h-48">
+                          <Image
+                            src={getImageUrl(mainImage) || '/placeholder-car.jpg'}
+                            alt={`${vehicle.make} ${vehicle.model}`}
+                            fill
+                            className="object-cover"
+                            unoptimized
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-full h-48 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                          <span className="text-gray-500 text-sm">No Image</span>
+                        </div>
+                      )}
+                      <div className="p-4">
+                        <h4 className="font-bold text-gray-900 text-lg">{vehicle.make} {vehicle.model}</h4>
+                        {vehicle.year && (
+                          <p className="text-sm text-gray-600">{vehicle.year}</p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Days Summary - Separate Container */}
+                    {formData.pickup_date && formData.dropoff_date && (() => {
+                      const pickupLocation = locations.find((loc) => loc.id === formData.pickup_location_id);
+                      const dropoffLocation = locations.find((loc) => loc.id === formData.dropoff_location_id);
+                      
+                      return (
+                        <div className="bg-white rounded-lg border border-gray-200 p-4">
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-gray-600">Pickup Date:</span>
+                              <span className="font-medium text-gray-900">
+                                {formData.pickup_date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </span>
+                            </div>
+                            {pickupLocation && (
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-gray-600">Pickup Location:</span>
+                                <span className="font-medium text-gray-900 text-right">
+                                  {pickupLocation.name} - {pickupLocation.city}
+                                </span>
+                              </div>
+                            )}
+                            <div className="flex justify-between items-center text-sm pt-2 border-t border-gray-200 mt-2">
+                              <span className="text-gray-600">Dropoff Date:</span>
+                              <span className="font-medium text-gray-900">
+                                {formData.dropoff_date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </span>
+                            </div>
+                            {dropoffLocation && (
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-gray-600">Dropoff Location:</span>
+                                <span className="font-medium text-gray-900 text-right">
+                                  {dropoffLocation.name} - {dropoffLocation.city}
+                                </span>
+                              </div>
+                            )}
+                            {pricing && (
+                              <div className="flex justify-between items-center pt-2 border-t border-gray-200 mt-2">
+                                <span className="text-gray-600 font-medium">Total Days:</span>
+                                <span className="font-bold text-gray-900">{pricing.days} {pricing.days === 1 ? 'day' : 'days'}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                );
+              })()}
             </div>
-          )}
 
+            {/* Pricing Summary and Selected Extras */}
+            <div className="lg:col-span-2">
+              {pricing && (
+                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                  <h3 className="font-semibold mb-4 text-lg">Pricing Summary</h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Base Price ({pricing.days} days):</span>
+                      <span className="font-medium">€{pricing.base_price.toFixed(2)}</span>
+                    </div>
+                    {pricing.extras_price > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Extras:</span>
+                        <span className="font-medium">€{pricing.extras_price.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {pricing.discount_amount > 0 && (
+                      <div className="flex justify-between text-sm text-green-600">
+                        <span>Discount:</span>
+                        <span className="font-medium">-€{pricing.discount_amount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold text-xl border-t border-gray-300 pt-3 mt-3">
+                      <span>Total:</span>
+                      <span className="text-orange-600">€{pricing.total_price.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {formData.selected_extras.length > 0 && (
+                    <div className="mt-6 pt-4 border-t border-gray-200">
+                      <h4 className="font-semibold mb-3 text-base">Selected Extras</h4>
+                      <div className="space-y-3">
+                        {formData.selected_extras.map((extra) => {
+                          const extraDetails = extras.find((e) => e.id === extra.id);
+                          return (
+                            <div
+                              key={extra.id}
+                              className="flex justify-between items-start pb-3 border-b border-gray-100 last:border-0 last:pb-0"
+                            >
+                              <div className="flex-1">
+                                <p className="font-medium text-gray-900 text-sm">
+                                  {extraDetails?.name || 'Extra'}
+                                </p>
+                                {extraDetails?.description && (
+                                  <p className="text-xs text-gray-600 mt-1">
+                                    {extraDetails.description}
+                                  </p>
+                                )}
+                              </div>
+                              <span className="font-semibold text-gray-900 text-sm ml-4">
+                                €{Number(extraDetails?.price || 0).toFixed(2)}
+                                {extraDetails?.price_type === 'per_day' && '/day'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
           <div className="flex gap-4">
             <button
               type="button"
-              onClick={() => setStep(2)}
+              onClick={() => changeStep(2)}
               className="flex-1 bg-gray-200 text-gray-900 px-8 py-3 rounded-lg font-semibold hover:bg-gray-300"
             >
               Back
@@ -728,7 +934,7 @@ export default function BookingForm({
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 bg-gray-900 text-white px-8 py-3 rounded-lg font-semibold hover:bg-gray-800 disabled:bg-gray-400"
+              className="flex-1 bg-orange-500 text-white px-8 py-3 rounded-lg font-semibold hover:bg-orange-600 disabled:bg-gray-400"
             >
               {loading ? 'Processing...' : 'Confirm Booking'}
             </button>

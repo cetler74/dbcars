@@ -137,13 +137,7 @@ export default function Header() {
 
   return (
     <header
-      className={`sticky top-0 z-50 transition-all ${
-        isAboutPage || isCarsPage || isBlogPage
-          ? 'bg-black shadow-sm'
-          : hasHeroSection
-          ? 'bg-transparent'
-          : 'bg-white shadow-sm'
-      }`}
+      className="sticky top-0 z-50 transition-all bg-black shadow-sm"
     >
       <nav className="container mx-auto px-4 md:px-6 py-4 bg-transparent">
         <div className="flex items-center justify-between">
@@ -215,65 +209,49 @@ export default function Header() {
           <div className="hidden md:flex items-center space-x-8">
             <Link
               href="/"
-              className={`transition-colors font-medium ${
-                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
-              }`}
+              className="transition-colors font-medium text-white hover:text-gray-200"
             >
               Home
             </Link>
           <Link
             href="/about"
             prefetch={true}
-            className={`transition-colors font-medium ${
-              hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
-            }`}
+            className="transition-colors font-medium text-white hover:text-gray-200"
           >
             About us
           </Link>
             <Link
               href="/cars"
               prefetch={true}
-              className={`transition-colors font-medium ${
-                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
-              }`}
+              className="transition-colors font-medium text-white hover:text-gray-200"
             >
               Our Cars
             </Link>
             <Link
               href="/blog"
               prefetch={true}
-              className={`transition-colors font-medium ${
-                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
-              }`}
+              className="transition-colors font-medium text-white hover:text-gray-200"
             >
               Blog
             </Link>
             <Link
               href="/faq"
               prefetch={true}
-              className={`transition-colors font-medium ${
-                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
-              }`}
+              className="transition-colors font-medium text-white hover:text-gray-200"
             >
               FAQ
             </Link>
             <Link
               href="/contact"
               prefetch={true}
-              className={`transition-colors font-medium ${
-                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
-              }`}
+              className="transition-colors font-medium text-white hover:text-gray-200"
             >
               Contacts
             </Link>
             <Link
               href="/admin"
               prefetch={true}
-              className={`px-5 py-2 rounded-md transition-colors font-medium ${
-                hasHeroSection || isAboutPage || isCarsPage || isBlogPage
-                  ? 'bg-white text-black hover:bg-gray-100'
-                  : 'bg-black text-white hover:bg-gray-800'
-              }`}
+              className="px-5 py-2 rounded-md transition-colors font-medium bg-white text-black hover:bg-gray-100"
             >
               Admin
             </Link>
@@ -281,7 +259,7 @@ export default function Header() {
 
           {/* Mobile Menu Button */}
           <button
-            className={`md:hidden transition-colors ${hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white' : 'text-black'}`}
+            className="md:hidden transition-colors text-white"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             aria-label="Toggle menu"
           >
@@ -362,65 +340,49 @@ export default function Header() {
           <div className="md:hidden mt-4 space-y-4 pb-4">
             <Link
               href="/"
-              className={`block font-medium transition-colors ${
-                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
-              }`}
+              className="block font-medium transition-colors text-white hover:text-gray-200"
               onClick={() => setIsMenuOpen(false)}
             >
               Home
             </Link>
             <Link
               href="/about"
-              className={`block font-medium transition-colors ${
-                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
-              }`}
+              className="block font-medium transition-colors text-white hover:text-gray-200"
               onClick={() => setIsMenuOpen(false)}
             >
               About us
             </Link>
             <Link
               href="/cars"
-              className={`block font-medium transition-colors ${
-                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
-              }`}
+              className="block font-medium transition-colors text-white hover:text-gray-200"
               onClick={() => setIsMenuOpen(false)}
             >
               Our Cars
             </Link>
             <Link
               href="/blog"
-              className={`block font-medium transition-colors ${
-                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
-              }`}
+              className="block font-medium transition-colors text-white hover:text-gray-200"
               onClick={() => setIsMenuOpen(false)}
             >
               Blog
             </Link>
             <Link
               href="/faq"
-              className={`block font-medium transition-colors ${
-                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
-              }`}
+              className="block font-medium transition-colors text-white hover:text-gray-200"
               onClick={() => setIsMenuOpen(false)}
             >
               FAQ
             </Link>
             <Link
               href="/contact"
-              className={`block font-medium transition-colors ${
-                hasHeroSection || isAboutPage || isCarsPage || isBlogPage ? 'text-white hover:text-gray-200' : 'text-black hover:text-gray-600'
-              }`}
+              className="block font-medium transition-colors text-white hover:text-gray-200"
               onClick={() => setIsMenuOpen(false)}
             >
               Contacts
             </Link>
             <Link
               href="/admin"
-              className={`block px-5 py-2 rounded-md transition-colors font-medium text-center ${
-                hasHeroSection || isAboutPage || isCarsPage || isBlogPage
-                  ? 'bg-white text-black hover:bg-gray-100'
-                  : 'bg-black text-white hover:bg-gray-800'
-              }`}
+              className="block px-5 py-2 rounded-md transition-colors font-medium text-center bg-white text-black hover:bg-gray-100"
               onClick={() => setIsMenuOpen(false)}
             >
               Admin

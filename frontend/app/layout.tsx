@@ -23,7 +23,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.variable} antialiased`} style={{ margin: 0, padding: 0 }}>
         <Header />
-        <main className="min-h-screen pb-12 md:pb-16" style={{ margin: 0 }}>{children}</main>
+        <main className="min-h-screen" style={{ margin: 0 }}>{children}</main>
         <ConditionalFooter />
       </body>
     </html>

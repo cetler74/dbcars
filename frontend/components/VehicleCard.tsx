@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -21,9 +24,11 @@ interface VehicleCardProps {
     available_from?: string | null;
     available_to?: string | null;
   };
+  priority?: boolean;
 }
 
-export default function VehicleCard({ vehicle, searchParams }: VehicleCardProps) {
+export default function VehicleCard({ vehicle, searchParams, priority = false }: VehicleCardProps) {
+  const [imageError, setImageError] = useState(false);
   const getCategoryLabel = (category: string) => {
     switch (category) {
       case 'luxury':
@@ -85,15 +90,19 @@ export default function VehicleCard({ vehicle, searchParams }: VehicleCardProps)
       className="group bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-xl hover:border-gray-300 transition-all duration-300 block"
     >
       {/* Image Section */}
-      <div className="relative w-full h-56 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
-        {imageUrl ? (
+      <div className="relative w-full aspect-[4/3] bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
+        {imageUrl && !imageError ? (
           <>
             <Image
               src={getImageUrl(imageUrl) || ''}
               alt={`${vehicle.make} ${vehicle.model}`}
               fill
               className="object-cover group-hover:scale-105 transition-transform duration-500"
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+              priority={priority}
+              quality={90}
+              unoptimized
+              onError={() => setImageError(true)}
             />
             {/* Image overlay gradient */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
