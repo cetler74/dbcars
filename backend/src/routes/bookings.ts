@@ -3,6 +3,7 @@ import pool from '../config/database';
 import { body, validationResult } from 'express-validator';
 import { calculatePricing } from '../services/pricing';
 import { checkAvailability } from '../services/availability';
+import { sendBookingEmail } from '../services/email';
 
 const router = express.Router();
 
@@ -134,11 +135,7 @@ router.post(
             discountAmount = coupon.discount_value;
           }
 
-          // Update coupon usage
-          await pool.query(
-            'UPDATE coupons SET usage_count = usage_count + 1 WHERE id = $1',
-            [couponId]
-          );
+          // Note: Coupon usage_count is incremented when booking status changes to 'confirmed' in admin route
         }
       }
 
@@ -266,7 +263,31 @@ router.post(
         [booking.id]
       );
 
-      res.status(201).json(fullBookingResult.rows[0]);
+      const fullBooking = fullBookingResult.rows[0];
+
+      // Fire-and-forget email sending (do not block booking creation if email fails)
+      sendBookingEmail({
+        booking_number: fullBooking.booking_number,
+        pickup_date: fullBooking.pickup_date,
+        dropoff_date: fullBooking.dropoff_date,
+        total_price: Number(fullBooking.total_price),
+        base_price: Number(fullBooking.base_price),
+        extras_price: Number(fullBooking.extras_price),
+        discount_amount: Number(fullBooking.discount_amount || 0),
+        first_name: fullBooking.first_name,
+        last_name: fullBooking.last_name,
+        email: fullBooking.email,
+        phone: fullBooking.phone,
+        make: fullBooking.make,
+        model: fullBooking.model,
+        year: fullBooking.year,
+        pickup_location_name: fullBooking.pickup_location_name,
+        dropoff_location_name: fullBooking.dropoff_location_name,
+      }).catch((err) => {
+        console.error('[Brevo] Error sending booking email (non-blocking):', err);
+      });
+
+      res.status(201).json(fullBooking);
     } catch (error: any) {
       console.error('Error creating booking:', error);
       console.error('Error details:', {

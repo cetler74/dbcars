@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getVehicle, getVehicles, getLocations } from '@/lib/api';
+import { getVehicle, getVehicles, getLocations, getVehicleBlockedDates } from '@/lib/api';
 import Image from 'next/image';
 import Link from 'next/link';
 import DatePicker from 'react-datepicker';
@@ -24,10 +24,14 @@ export default function VehicleDetailPage() {
   const [dropoffDate, setDropoffDate] = useState<Date | null>(null);
   const [pickupLocation, setPickupLocation] = useState('');
   const [dropoffLocation, setDropoffLocation] = useState('');
+  
+  // Blocked dates state
+  const [blockedDatesData, setBlockedDatesData] = useState<any>(null);
 
   useEffect(() => {
     if (vehicleId) {
       loadVehicle();
+      loadBlockedDates();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vehicleId]);
@@ -43,6 +47,10 @@ export default function VehicleDetailPage() {
   // Load saved search data from URL params (priority) or localStorage
   const loadSavedSearchData = () => {
     try {
+      let pickupLocationId = '';
+      let dropoffLocationId = '';
+      let wasShowReturnLocation = false;
+      
       // First check URL params (they take priority)
       if (typeof window !== 'undefined') {
         const urlParams = new URLSearchParams(window.location.search);
@@ -51,8 +59,9 @@ export default function VehicleDetailPage() {
         const toParam = urlParams.get('available_to');
         
         if (locationParam && locations.length > 0) {
-          const locationExists = locations.some((loc: any) => loc.id === locationParam);
+          const locationExists = locations.some((loc: any) => String(loc.id) === String(locationParam));
           if (locationExists) {
+            pickupLocationId = locationParam;
             setPickupLocation(locationParam);
           }
         }
@@ -68,43 +77,54 @@ export default function VehicleDetailPage() {
             setDropoffDate(date);
           }
         }
-        
-        // If we found location in URL params, we're done
-        if (locationParam) {
-          return;
-        }
       }
       
-      // Fallback to localStorage if no URL params
+      // Then check localStorage
       const savedData = localStorage.getItem('carSearchData');
       if (savedData) {
         const searchData = JSON.parse(savedData);
-        if (searchData.pickup_location_id && locations.length > 0) {
-          // Verify location exists in locations list before setting
-          const locationExists = locations.some((loc: any) => loc.id === searchData.pickup_location_id);
+        
+        // Save the showReturnLocation state
+        wasShowReturnLocation = searchData.showReturnLocation || false;
+        
+        // Use pickup location from localStorage if not set from URL
+        if (!pickupLocationId && searchData.pickup_location_id && locations.length > 0) {
+          const locationExists = locations.some((loc: any) => String(loc.id) === String(searchData.pickup_location_id));
           if (locationExists) {
+            pickupLocationId = searchData.pickup_location_id;
             setPickupLocation(searchData.pickup_location_id);
           }
         }
+        
+        // Use dropoff location from localStorage if available
         if (searchData.dropoff_location_id && locations.length > 0) {
-          // Verify location exists in locations list before setting
-          const locationExists = locations.some((loc: any) => loc.id === searchData.dropoff_location_id);
+          const locationExists = locations.some((loc: any) => String(loc.id) === String(searchData.dropoff_location_id));
           if (locationExists) {
+            dropoffLocationId = searchData.dropoff_location_id;
             setDropoffLocation(searchData.dropoff_location_id);
           }
         }
-        if (searchData.pickup_date) {
+        
+        // Load dates from localStorage if not already set
+        if (!pickupDate && searchData.pickup_date) {
           const date = new Date(searchData.pickup_date);
           if (!isNaN(date.getTime())) {
             setPickupDate(date);
           }
         }
-        if (searchData.dropoff_date) {
+        if (!dropoffDate && searchData.dropoff_date) {
           const date = new Date(searchData.dropoff_date);
           if (!isNaN(date.getTime())) {
             setDropoffDate(date);
           }
         }
+      }
+      
+      // Only use pickup location for dropoff if user selected SAME location
+      // (i.e., they didn't click "Different return")
+      if (!wasShowReturnLocation && pickupLocationId && !dropoffLocationId) {
+        // User wants same location for both pickup and dropoff
+        setDropoffLocation(pickupLocationId);
       }
     } catch (error) {
       console.error('Error loading saved search data:', error);
@@ -154,6 +174,45 @@ export default function VehicleDetailPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadBlockedDates = async () => {
+    try {
+      // Load blocked dates for the next 12 months
+      const data = await getVehicleBlockedDates(vehicleId);
+      setBlockedDatesData(data);
+      console.log('Loaded blocked dates for vehicle:', vehicleId, data);
+    } catch (error) {
+      console.error('Error loading blocked dates:', error);
+    }
+  };
+
+  // Helper function to check if a date is available
+  const isDateAvailable = (date: Date): boolean => {
+    if (!blockedDatesData) return true;
+    
+    const dateStr = date.toISOString().split('T')[0];
+    
+    // Check blocked dates (maintenance/blocked notes)
+    if (blockedDatesData.blocked_dates) {
+      const isBlocked = blockedDatesData.blocked_dates.some((note: any) => {
+        const noteDate = new Date(note.note_date).toISOString().split('T')[0];
+        return dateStr === noteDate;
+      });
+      if (isBlocked) return false;
+    }
+    
+    // Check if date falls within any booking
+    if (blockedDatesData.bookings) {
+      const isBooked = blockedDatesData.bookings.some((booking: any) => {
+        const pickupDate = new Date(booking.pickup_date).toISOString().split('T')[0];
+        const dropoffDate = new Date(booking.dropoff_date).toISOString().split('T')[0];
+        return dateStr >= pickupDate && dateStr <= dropoffDate;
+      });
+      if (isBooked) return false;
+    }
+    
+    return true;
   };
 
   // Helper function to get full image URL
@@ -512,6 +571,7 @@ export default function VehicleDetailPage() {
                       selected={pickupDate}
                       onChange={(date: Date | null) => setPickupDate(date)}
                       minDate={new Date()}
+                      filterDate={isDateAvailable}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                       dateFormat="dd/MM/yyyy"
                       placeholderText="dd/mm/yyyy"
@@ -528,6 +588,7 @@ export default function VehicleDetailPage() {
                       selected={dropoffDate}
                       onChange={(date: Date | null) => setDropoffDate(date)}
                       minDate={pickupDate || new Date()}
+                      filterDate={isDateAvailable}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                       dateFormat="dd/MM/yyyy"
                       placeholderText="dd/mm/yyyy"

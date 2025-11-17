@@ -11,7 +11,7 @@ const faqs = [
   {
     question: 'What is the minimum age to rent?',
     answer:
-      'The minimum age is 25 years old for all luxury vehicles. Some exotic supercars may require drivers to be 30+ with additional experience.',
+      'The minimum age is 25 years old for most vehicles. Supercars may require drivers to be 30+ with additional experience.',
   },
   {
     question: 'Do you offer delivery service?',
@@ -26,7 +26,7 @@ const faqs = [
   {
     question: 'How much is the security deposit?',
     answer:
-      'Security deposits vary by vehicle category: Luxury vehicles: €1,000, Super luxury: €2,500, Exotic/Supercars: €5,000. The deposit is held on your credit card and released 7-14 days after return.',
+      'Security deposits vary by vehicle category: Economic: €500, Luxury Sedans: €1,000, Sportscars: €2,000, SUVs: €1,500, Supercars: €5,000. The deposit is held on your credit card and released 7-14 days after return.',
   },
   {
     question: 'Can I drive to other countries?',

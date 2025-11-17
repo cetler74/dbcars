@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import pool from '../config/database';
 import { authenticate, requireAdmin } from '../middleware/auth';
 import { body, validationResult } from 'express-validator';
+import { sendBookingStatusEmail } from '../services/email';
 
 const router = express.Router();
 
@@ -10,12 +11,13 @@ const router = express.Router();
 router.use(authenticate);
 router.use(requireAdmin);
 
-// Dashboard statistics
+// Dashboard statistics - comprehensive data from all areas
 router.get('/statistics', async (req: Request, res: Response) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // ========== BOOKINGS STATISTICS ==========
     // Today's pickups
     const pickupsResult = await pool.query(
       `SELECT COUNT(*) as count FROM bookings 
@@ -30,11 +32,11 @@ router.get('/statistics', async (req: Request, res: Response) => {
        AND status IN ('active', 'completed')`
     );
 
-    // Total revenue (this month)
+    // Total revenue (this month) - includes confirmed and completed bookings
     const revenueResult = await pool.query(
       `SELECT COALESCE(SUM(total_price), 0) as revenue 
        FROM bookings 
-       WHERE status = 'completed' 
+       WHERE status IN ('confirmed', 'active', 'completed') 
        AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)`
     );
 
@@ -61,10 +63,10 @@ router.get('/statistics', async (req: Request, res: Response) => {
       `SELECT COUNT(*) as count FROM bookings WHERE status = 'active'`
     );
 
-    // Total revenue (all time)
+    // Total revenue (all time) - includes confirmed and completed bookings
     const totalRevenueResult = await pool.query(
       `SELECT COALESCE(SUM(total_price), 0) as revenue 
-       FROM bookings WHERE status = 'completed'`
+       FROM bookings WHERE status IN ('confirmed', 'active', 'completed')`
     );
 
     // Status breakdown
@@ -118,14 +120,140 @@ router.get('/statistics', async (req: Request, res: Response) => {
        LIMIT 10`
     );
 
-    // Revenue comparison (this month vs last month)
+    // Revenue comparison (this month vs last month) - includes confirmed and completed bookings
     const lastMonthRevenueResult = await pool.query(
       `SELECT COALESCE(SUM(total_price), 0) as revenue 
        FROM bookings 
-       WHERE status = 'completed' 
+       WHERE status IN ('confirmed', 'active', 'completed') 
        AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')`
     );
 
+    // ========== VEHICLE STATISTICS ==========
+    // Total vehicles
+    const totalVehiclesResult = await pool.query(
+      `SELECT COUNT(*) as count FROM vehicles WHERE is_active = true`
+    );
+
+    // Vehicles by category
+    const vehiclesByCategoryResult = await pool.query(
+      `SELECT category, COUNT(*) as count 
+       FROM vehicles 
+       WHERE is_active = true 
+       GROUP BY category 
+       ORDER BY count DESC`
+    );
+
+    // Most popular vehicles (by number of bookings)
+    const popularVehiclesResult = await pool.query(
+      `SELECT v.id, v.make, v.model, v.year, v.category,
+       COUNT(b.id) as booking_count,
+       COALESCE(SUM(b.total_price), 0) as total_revenue
+       FROM vehicles v
+       LEFT JOIN bookings b ON v.id = b.vehicle_id AND b.status IN ('confirmed', 'active', 'completed')
+       WHERE v.is_active = true
+       GROUP BY v.id, v.make, v.model, v.year, v.category
+       ORDER BY booking_count DESC
+       LIMIT 5`
+    );
+
+    // Vehicle utilization (percentage of time booked)
+    const vehicleUtilizationResult = await pool.query(
+      `SELECT v.id, v.make, v.model,
+       COUNT(DISTINCT vs.id) as total_subunits,
+       COUNT(DISTINCT CASE WHEN vs.status = 'out_on_rent' THEN vs.id END) as rented_subunits,
+       COUNT(DISTINCT CASE WHEN vs.status = 'available' THEN vs.id END) as available_subunits
+       FROM vehicles v
+       LEFT JOIN vehicle_subunits vs ON v.id = vs.vehicle_id
+       WHERE v.is_active = true
+       GROUP BY v.id, v.make, v.model
+       ORDER BY total_subunits DESC
+       LIMIT 10`
+    );
+
+    // ========== CUSTOMER STATISTICS ==========
+    // Total customers
+    const totalCustomersResult = await pool.query(
+      `SELECT COUNT(*) as count FROM customers`
+    );
+
+    // New customers this month
+    const newCustomersResult = await pool.query(
+      `SELECT COUNT(*) as count FROM customers 
+       WHERE DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)`
+    );
+
+    // Top customers by revenue
+    const topCustomersResult = await pool.query(
+      `SELECT c.id, c.first_name, c.last_name, c.email,
+       COUNT(b.id) as booking_count,
+       COALESCE(SUM(b.total_price), 0) as total_spent
+       FROM customers c
+       LEFT JOIN bookings b ON c.id = b.customer_id AND b.status IN ('confirmed', 'active', 'completed')
+       GROUP BY c.id, c.first_name, c.last_name, c.email
+       ORDER BY total_spent DESC
+       LIMIT 5`
+    );
+
+    // Customer repeat rate
+    const repeatCustomersResult = await pool.query(
+      `SELECT 
+       COUNT(DISTINCT customer_id) as total_customers_with_bookings,
+       COUNT(DISTINCT CASE WHEN booking_count > 1 THEN customer_id END) as repeat_customers
+       FROM (
+         SELECT customer_id, COUNT(*) as booking_count
+         FROM bookings
+         GROUP BY customer_id
+       ) as customer_bookings`
+    );
+
+    // ========== REVENUE BY CATEGORY ==========
+    const revenueByCategoryResult = await pool.query(
+      `SELECT v.category, 
+       COALESCE(SUM(b.total_price), 0) as revenue,
+       COUNT(b.id) as booking_count
+       FROM bookings b
+       JOIN vehicles v ON b.vehicle_id = v.id
+       WHERE b.status IN ('confirmed', 'active', 'completed')
+       GROUP BY v.category
+       ORDER BY revenue DESC`
+    );
+
+    // ========== REVENUE BY LOCATION ==========
+    const revenueByLocationResult = await pool.query(
+      `SELECT l.name as location_name, l.city,
+       COALESCE(SUM(b.total_price), 0) as revenue,
+       COUNT(b.id) as booking_count
+       FROM bookings b
+       JOIN locations l ON b.pickup_location_id = l.id
+       WHERE b.status IN ('confirmed', 'active', 'completed')
+       GROUP BY l.id, l.name, l.city
+       ORDER BY revenue DESC
+       LIMIT 10`
+    );
+
+    // ========== EXTRAS STATISTICS ==========
+    const totalExtrasResult = await pool.query(
+      `SELECT COUNT(*) as count FROM extras WHERE is_active = true`
+    );
+
+    const popularExtrasResult = await pool.query(
+      `SELECT e.id, e.name, e.price, e.price_type,
+       COUNT(be.booking_id) as times_booked,
+       COALESCE(SUM(be.price * be.quantity), 0) as total_revenue
+       FROM extras e
+       LEFT JOIN booking_extras be ON e.id = be.extra_id
+       WHERE e.is_active = true
+       GROUP BY e.id, e.name, e.price, e.price_type
+       ORDER BY times_booked DESC
+       LIMIT 5`
+    );
+
+    // ========== BLOG STATISTICS ==========
+    const totalBlogPostsResult = await pool.query(
+      `SELECT COUNT(*) as count FROM blog_posts WHERE is_published = true`
+    );
+
+    // ========== PROCESS RESULTS ==========
     const statusBreakdown: any = {};
     statusBreakdownResult.rows.forEach((row: any) => {
       statusBreakdown[row.status] = parseInt(row.count);
@@ -137,7 +265,14 @@ router.get('/statistics', async (req: Request, res: Response) => {
       ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue * 100).toFixed(1)
       : '0';
 
+    const totalCustomersWithBookings = parseInt(repeatCustomersResult.rows[0]?.total_customers_with_bookings || 0);
+    const repeatCustomers = parseInt(repeatCustomersResult.rows[0]?.repeat_customers || 0);
+    const repeatRate = totalCustomersWithBookings > 0 
+      ? ((repeatCustomers / totalCustomersWithBookings) * 100).toFixed(1)
+      : '0';
+
     res.json({
+      // Bookings data
       today_pickups: parseInt(pickupsResult.rows[0].count),
       today_returns: parseInt(returnsResult.rows[0].count),
       monthly_revenue: thisMonthRevenue,
@@ -151,6 +286,29 @@ router.get('/statistics', async (req: Request, res: Response) => {
       upcoming_pickups: upcomingPickupsResult.rows,
       upcoming_returns: upcomingReturnsResult.rows,
       revenue_change: revenueChange,
+      
+      // Vehicle statistics
+      total_vehicles: parseInt(totalVehiclesResult.rows[0].count),
+      vehicles_by_category: vehiclesByCategoryResult.rows,
+      popular_vehicles: popularVehiclesResult.rows,
+      vehicle_utilization: vehicleUtilizationResult.rows,
+      
+      // Customer statistics
+      total_customers: parseInt(totalCustomersResult.rows[0].count),
+      new_customers_this_month: parseInt(newCustomersResult.rows[0].count),
+      top_customers: topCustomersResult.rows,
+      repeat_customer_rate: parseFloat(repeatRate),
+      
+      // Revenue analytics
+      revenue_by_category: revenueByCategoryResult.rows,
+      revenue_by_location: revenueByLocationResult.rows,
+      
+      // Extras statistics
+      total_extras: parseInt(totalExtrasResult.rows[0].count),
+      popular_extras: popularExtrasResult.rows,
+      
+      // Blog statistics
+      total_blog_posts: parseInt(totalBlogPostsResult.rows[0].count),
     });
   } catch (error) {
     console.error('Error fetching statistics:', error);
@@ -161,7 +319,21 @@ router.get('/statistics', async (req: Request, res: Response) => {
 // Get all bookings
 router.get('/bookings', async (req: Request, res: Response) => {
   try {
-    const { status, vehicle_id, date_from, date_to } = req.query;
+    const { 
+      status, 
+      vehicle_id, 
+      date_from, 
+      date_to,
+      booking_number,
+      customer_name,
+      vehicle_search,
+      page = '1',
+      per_page = '20'
+    } = req.query;
+
+    const pageNum = parseInt(page as string) || 1;
+    const perPageNum = parseInt(per_page as string) || 20;
+    const offset = (pageNum - 1) * perPageNum;
 
     let query = `
       SELECT b.*, 
@@ -203,10 +375,46 @@ router.get('/bookings', async (req: Request, res: Response) => {
       paramCount++;
     }
 
-    query += ` ORDER BY b.created_at DESC LIMIT 100`;
+    if (booking_number) {
+      query += ` AND b.booking_number ILIKE $${paramCount}`;
+      params.push(`%${booking_number}%`);
+      paramCount++;
+    }
+
+    if (customer_name) {
+      query += ` AND (c.first_name ILIKE $${paramCount} OR c.last_name ILIKE $${paramCount} OR CONCAT(c.first_name, ' ', c.last_name) ILIKE $${paramCount})`;
+      params.push(`%${customer_name}%`);
+      paramCount++;
+    }
+
+    if (vehicle_search) {
+      query += ` AND (v.make ILIKE $${paramCount} OR v.model ILIKE $${paramCount} OR CONCAT(v.make, ' ', v.model) ILIKE $${paramCount})`;
+      params.push(`%${vehicle_search}%`);
+      paramCount++;
+    }
+
+    // Get total count for pagination
+    const countQuery = query.replace(
+      /SELECT b\.\*, [\s\S]*?FROM bookings b/,
+      'SELECT COUNT(*) as total FROM bookings b'
+    );
+    const countResult = await pool.query(countQuery, params);
+    const totalCount = parseInt(countResult.rows[0].total);
+
+    query += ` ORDER BY b.created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+    params.push(perPageNum, offset);
 
     const result = await pool.query(query, params);
-    res.json(result.rows);
+    
+    res.json({
+      bookings: result.rows,
+      pagination: {
+        page: pageNum,
+        per_page: perPageNum,
+        total: totalCount,
+        total_pages: Math.ceil(totalCount / perPageNum)
+      }
+    });
   } catch (error) {
     console.error('Error fetching bookings:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -401,12 +609,212 @@ router.put('/bookings/:id', async (req: Request, res: Response) => {
 
     const updatedBooking = result.rows[0];
 
+    // Handle coupon usage tracking based on status changes
+    if (currentBooking.coupon_code) {
+      // Status changed from non-confirmed to confirmed - increment usage
+      if (currentBooking.status !== 'confirmed' && newStatus === 'confirmed') {
+        await pool.query(
+          'UPDATE coupons SET usage_count = usage_count + 1 WHERE code = $1',
+          [currentBooking.coupon_code.toUpperCase()]
+        );
+      }
+      // Status changed from confirmed to cancelled - decrement usage
+      else if (currentBooking.status === 'confirmed' && newStatus === 'cancelled') {
+        await pool.query(
+          'UPDATE coupons SET usage_count = GREATEST(0, usage_count - 1) WHERE code = $1',
+          [currentBooking.coupon_code.toUpperCase()]
+        );
+      }
+    }
+
     // Sync vehicle subunit status based on updated booking status
     await syncVehicleSubunitStatus(updatedBooking);
+
+    // Fetch full booking details with customer, vehicle, and location info for email
+    const fullBookingResult = await pool.query(
+      `SELECT 
+       b.id, b.booking_number, b.status, b.pickup_date, b.dropoff_date,
+       b.total_price, b.base_price, b.extras_price, b.discount_amount,
+       b.payment_link, b.notes,
+       c.first_name, c.last_name, c.email, c.phone,
+       v.make, v.model, v.year,
+       pl.name as pickup_location_name, pl.city as pickup_location_city,
+       dl.name as dropoff_location_name, dl.city as dropoff_location_city
+       FROM bookings b
+       JOIN customers c ON b.customer_id = c.id
+       JOIN vehicles v ON b.vehicle_id = v.id
+       JOIN locations pl ON b.pickup_location_id = pl.id
+       JOIN locations dl ON b.dropoff_location_id = dl.id
+       WHERE b.id = $1`,
+      [updatedBooking.id]
+    );
+
+    const fullBooking = fullBookingResult.rows[0];
+
+    // Send status update email (fire-and-forget, don't block the response)
+    console.log('Attempting to send booking status email for:', {
+      booking_number: fullBooking.booking_number,
+      status: fullBooking.status,
+      email: fullBooking.email,
+      has_payment_link: !!fullBooking.payment_link,
+      has_base_price: fullBooking.base_price !== undefined,
+      has_extras_price: fullBooking.extras_price !== undefined,
+      has_discount_amount: fullBooking.discount_amount !== undefined,
+    });
+    
+    sendBookingStatusEmail(fullBooking).catch((emailError) => {
+      console.error('Failed to send booking status email:', emailError);
+      console.error('Email error stack:', emailError.stack);
+    });
 
     res.json(updatedBooking);
   } catch (error) {
     console.error('Error updating booking:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Edit booking (dates and extras)
+router.put('/bookings/:id/edit', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { pickup_date, dropoff_date, extras } = req.body;
+
+    // Load current booking
+    const currentResult = await pool.query(
+      `SELECT b.*, v.base_price_daily 
+       FROM bookings b 
+       JOIN vehicles v ON b.vehicle_id = v.id 
+       WHERE b.id = $1`,
+      [id]
+    );
+    
+    if (currentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    
+    const currentBooking = currentResult.rows[0];
+
+    // Validate that booking is editable
+    if (!['pending', 'waiting_payment', 'confirmed'].includes(currentBooking.status)) {
+      return res.status(400).json({ error: 'Cannot edit completed or cancelled bookings' });
+    }
+
+    const newPickupDate = pickup_date ? new Date(pickup_date) : new Date(currentBooking.pickup_date);
+    const newDropoffDate = dropoff_date ? new Date(dropoff_date) : new Date(currentBooking.dropoff_date);
+
+    // Validate dates
+    if (newPickupDate >= newDropoffDate) {
+      return res.status(400).json({ error: 'Drop-off date must be after pick-up date' });
+    }
+
+    // Check vehicle availability for new dates (if dates changed)
+    if (pickup_date || dropoff_date) {
+      const conflictingBookings = await pool.query(
+        `SELECT id FROM bookings 
+         WHERE vehicle_subunit_id = $1 
+         AND id != $2
+         AND status IN ('pending', 'waiting_payment', 'confirmed')
+         AND (
+           (pickup_date <= $3 AND dropoff_date > $3) OR
+           (pickup_date < $4 AND dropoff_date >= $4) OR
+           (pickup_date >= $3 AND dropoff_date <= $4)
+         )`,
+        [currentBooking.vehicle_subunit_id, id, newPickupDate, newDropoffDate]
+      );
+
+      if (conflictingBookings.rows.length > 0) {
+        return res.status(400).json({ error: 'Vehicle is not available for the selected dates' });
+      }
+    }
+
+    // Calculate new rental days
+    const days = Math.ceil((newDropoffDate.getTime() - newPickupDate.getTime()) / (1000 * 60 * 60 * 24));
+    const basePrice = currentBooking.base_price_daily * days;
+
+    // Calculate extras price
+    let extrasPrice = 0;
+    if (extras && Array.isArray(extras)) {
+      const extrasResult = await pool.query(
+        `SELECT id, price, price_type FROM extras WHERE id = ANY($1::uuid[])`,
+        [extras.map((e: any) => e.id)]
+      );
+
+      extras.forEach((extra: any) => {
+        const extraData = extrasResult.rows.find((e) => e.id === extra.id);
+        if (extraData) {
+          if (extraData.price_type === 'per_day') {
+            extrasPrice += extraData.price * days * (extra.quantity || 1);
+          } else {
+            extrasPrice += extraData.price * (extra.quantity || 1);
+          }
+        }
+      });
+
+      // Update booking extras
+      await pool.query('DELETE FROM booking_extras WHERE booking_id = $1', [id]);
+      
+      for (const extra of extras) {
+        const extraDataResult = await pool.query(
+          'SELECT price FROM extras WHERE id = $1',
+          [extra.id]
+        );
+        if (extraDataResult.rows.length > 0) {
+          await pool.query(
+            `INSERT INTO booking_extras (booking_id, extra_id, quantity, price)
+             VALUES ($1, $2, $3, $4)`,
+            [id, extra.id, extra.quantity || 1, extraDataResult.rows[0].price]
+          );
+        }
+      }
+    } else {
+      extrasPrice = parseFloat(currentBooking.extras_price) || 0;
+    }
+
+    // Recalculate total with existing discount
+    const discountAmount = parseFloat(currentBooking.discount_amount) || 0;
+    const totalPrice = basePrice + extrasPrice - discountAmount;
+
+    // Update booking
+    const updateFields = [];
+    const params: any[] = [];
+    let paramCount = 1;
+
+    if (pickup_date) {
+      updateFields.push(`pickup_date = $${paramCount}`);
+      params.push(newPickupDate);
+      paramCount++;
+    }
+
+    if (dropoff_date) {
+      updateFields.push(`dropoff_date = $${paramCount}`);
+      params.push(newDropoffDate);
+      paramCount++;
+    }
+
+    updateFields.push(`base_price = $${paramCount}`);
+    params.push(basePrice);
+    paramCount++;
+
+    updateFields.push(`extras_price = $${paramCount}`);
+    params.push(extrasPrice);
+    paramCount++;
+
+    updateFields.push(`total_price = $${paramCount}`);
+    params.push(totalPrice);
+    paramCount++;
+
+    params.push(id);
+
+    const result = await pool.query(
+      `UPDATE bookings SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $${paramCount} RETURNING *`,
+      params
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error editing booking:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -710,16 +1118,53 @@ router.delete('/vehicles/:id', async (req: Request, res: Response) => {
     // Check if vehicle has active bookings
     const bookingsResult = await pool.query(
       `SELECT COUNT(*) as count FROM bookings 
-       WHERE vehicle_id = $1 AND status IN ('confirmed', 'active')`,
+       WHERE vehicle_id = $1 AND status IN ('confirmed', 'active', 'pending', 'waiting_payment')`,
       [id]
     );
 
     if (parseInt(bookingsResult.rows[0].count) > 0) {
       return res.status(400).json({
-        error: 'Cannot delete vehicle with active bookings. Deactivate it instead.',
+        error: 'Cannot delete vehicle with active or pending bookings. Deactivate it instead.',
       });
     }
 
+    // Check if vehicle has any bookings (even past ones)
+    const allBookingsResult = await pool.query(
+      `SELECT COUNT(*) as count FROM bookings WHERE vehicle_id = $1`,
+      [id]
+    );
+
+    if (parseInt(allBookingsResult.rows[0].count) > 0) {
+      return res.status(400).json({
+        error: 'Cannot delete vehicle with booking history. Deactivate it instead.',
+      });
+    }
+
+    // Delete related records in the correct order
+    // 1. Delete vehicle_extras associations
+    await pool.query('DELETE FROM vehicle_extras WHERE vehicle_id = $1', [id]);
+
+    // 2. Delete availability notes
+    await pool.query('DELETE FROM availability_notes WHERE vehicle_id = $1', [id]);
+
+    // 3. Delete damage logs for this vehicle's subunits
+    await pool.query(
+      `DELETE FROM damage_logs WHERE vehicle_subunit_id IN 
+       (SELECT id FROM vehicle_subunits WHERE vehicle_id = $1)`,
+      [id]
+    );
+
+    // 4. Delete availability notes for this vehicle's subunits
+    await pool.query(
+      `DELETE FROM availability_notes WHERE vehicle_subunit_id IN 
+       (SELECT id FROM vehicle_subunits WHERE vehicle_id = $1)`,
+      [id]
+    );
+
+    // 5. Delete vehicle_subunits
+    await pool.query('DELETE FROM vehicle_subunits WHERE vehicle_id = $1', [id]);
+
+    // 6. Finally, delete the vehicle
     const result = await pool.query('DELETE FROM vehicles WHERE id = $1 RETURNING id', [id]);
 
     if (result.rows.length === 0) {
@@ -727,16 +1172,24 @@ router.delete('/vehicles/:id', async (req: Request, res: Response) => {
     }
 
     res.json({ message: 'Vehicle deleted successfully' });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting vehicle:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+    });
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
 // Availability overview - Get vehicles with subunits and bookings
 router.get('/availability', async (req: Request, res: Response) => {
   try {
-    const { vehicle_id, month, year } = req.query;
+    const { vehicle_id, month, year, page = '1', per_page = '100' } = req.query;
 
     const startDate = new Date(
       parseInt(year as string) || new Date().getFullYear(),
@@ -745,6 +1198,10 @@ router.get('/availability', async (req: Request, res: Response) => {
     );
     const endDate = new Date(startDate);
     endDate.setMonth(endDate.getMonth() + 1);
+
+    const pageNum = parseInt(page as string) || 1;
+    const perPageNum = Math.min(parseInt(per_page as string) || 100, 500); // Limit to 500
+    const offset = (pageNum - 1) * perPageNum;
 
     // Get vehicles with subunits
     let vehicleQuery = `
@@ -772,7 +1229,9 @@ router.get('/availability', async (req: Request, res: Response) => {
       paramCount++;
     }
 
-    vehicleQuery += ` GROUP BY v.id, v.make, v.model, v.year ORDER BY v.make, v.model`;
+    vehicleQuery += ` GROUP BY v.id, v.make, v.model, v.year ORDER BY v.make, v.model LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+    vehicleParams.push(perPageNum, offset);
+    paramCount += 2;
 
     const vehiclesResult = await pool.query(vehicleQuery, vehicleParams);
 
@@ -837,9 +1296,323 @@ router.get('/availability', async (req: Request, res: Response) => {
       vehicles: vehiclesResult.rows,
       bookings: bookingsResult.rows,
       availability_notes: notesResult.rows,
+      pagination: {
+        page: pageNum,
+        per_page: perPageNum,
+        total: vehiclesResult.rows.length,
+      },
     });
   } catch (error) {
     console.error('Error fetching availability:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get availability conflicts
+router.get('/availability/conflicts', async (req: Request, res: Response) => {
+  try {
+    const { vehicle_id, start_date, end_date } = req.query;
+
+    if (!start_date || !end_date) {
+      return res.status(400).json({ error: 'start_date and end_date are required' });
+    }
+
+    const startDate = new Date(start_date as string);
+    const endDate = new Date(end_date as string);
+
+    let query = `
+      SELECT 
+        b1.id as booking1_id,
+        b1.booking_number as booking1_number,
+        b1.vehicle_subunit_id,
+        b1.pickup_date as booking1_pickup,
+        b1.dropoff_date as booking1_dropoff,
+        b1.status as booking1_status,
+        b2.id as booking2_id,
+        b2.booking_number as booking2_number,
+        b2.pickup_date as booking2_pickup,
+        b2.dropoff_date as booking2_dropoff,
+        b2.status as booking2_status,
+        vs.license_plate,
+        v.make,
+        v.model
+      FROM bookings b1
+      JOIN bookings b2 ON b1.vehicle_subunit_id = b2.vehicle_subunit_id
+      JOIN vehicle_subunits vs ON b1.vehicle_subunit_id = vs.id
+      JOIN vehicles v ON vs.vehicle_id = v.id
+      WHERE b1.id != b2.id
+      AND b1.status = ANY($1::text[])
+      AND b2.status = ANY($1::text[])
+      AND (
+        (b1.pickup_date <= b2.dropoff_date AND b1.dropoff_date >= b2.pickup_date)
+      )
+      AND (
+        (b1.pickup_date >= $2 AND b1.pickup_date <= $3)
+        OR (b2.pickup_date >= $2 AND b2.pickup_date <= $3)
+      )
+    `;
+
+    const params: any[] = [['pending', 'waiting_payment', 'confirmed', 'active'], startDate, endDate];
+    let paramCount = 4;
+
+    if (vehicle_id) {
+      query += ` AND v.id = $${paramCount}`;
+      params.push(vehicle_id);
+      paramCount++;
+    }
+
+    query += ` ORDER BY b1.pickup_date, b2.pickup_date`;
+
+    const result = await pool.query(query, params);
+
+    res.json({
+      conflicts: result.rows,
+      count: result.rows.length,
+    });
+  } catch (error) {
+    console.error('Error fetching availability conflicts:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Export availability data
+router.get('/availability/export', async (req: Request, res: Response) => {
+  try {
+    const { vehicle_id, start_date, end_date, format = 'json' } = req.query;
+
+    const startDate = start_date ? new Date(start_date as string) : new Date();
+    const endDate = end_date ? new Date(end_date as string) : new Date();
+    endDate.setMonth(endDate.getMonth() + 1);
+
+    // Get vehicles with subunits
+    let vehicleQuery = `
+      SELECT 
+        v.id,
+        v.make,
+        v.model,
+        v.year,
+        COUNT(DISTINCT vs.id) as total_subunits,
+        COUNT(DISTINCT CASE WHEN vs.status = 'available' THEN vs.id END) as available_subunits,
+        COUNT(DISTINCT CASE WHEN vs.status = 'reserved' THEN vs.id END) as reserved_subunits,
+        COUNT(DISTINCT CASE WHEN vs.status = 'out_on_rent' THEN vs.id END) as out_on_rent_subunits,
+        COUNT(DISTINCT CASE WHEN vs.status = 'returned' THEN vs.id END) as returned_subunits,
+        COUNT(DISTINCT CASE WHEN vs.status = 'maintenance' THEN vs.id END) as maintenance_subunits
+      FROM vehicles v
+      LEFT JOIN vehicle_subunits vs ON v.id = vs.vehicle_id
+      WHERE 1=1
+    `;
+    const vehicleParams: any[] = [];
+    let paramCount = 1;
+
+    if (vehicle_id) {
+      vehicleQuery += ` AND v.id = $${paramCount}`;
+      vehicleParams.push(vehicle_id);
+      paramCount++;
+    }
+
+    vehicleQuery += ` GROUP BY v.id, v.make, v.model, v.year ORDER BY v.make, v.model`;
+
+    const vehiclesResult = await pool.query(vehicleQuery, vehicleParams);
+
+    // Get bookings
+    let bookingsQuery = `SELECT 
+        b.id,
+        b.booking_number,
+        b.vehicle_id,
+        b.vehicle_subunit_id,
+        b.pickup_date,
+        b.dropoff_date,
+        b.status as booking_status,
+        vs.license_plate,
+        vs.status as subunit_status,
+        c.first_name || ' ' || c.last_name as customer_name,
+        c.email as customer_email,
+        c.phone as customer_phone
+      FROM bookings b
+      JOIN vehicle_subunits vs ON b.vehicle_subunit_id = vs.id
+      JOIN vehicles v ON vs.vehicle_id = v.id
+      LEFT JOIN customers c ON b.customer_id = c.id
+      WHERE b.pickup_date < $1 AND b.dropoff_date > $2`;
+    
+    const bookingsParams: any[] = [endDate, startDate];
+    let bookingsParamCount = 3;
+    
+    if (vehicle_id) {
+      bookingsQuery += ` AND v.id = $${bookingsParamCount}`;
+      bookingsParams.push(vehicle_id);
+      bookingsParamCount++;
+    }
+    
+    bookingsQuery += ` ORDER BY b.pickup_date`;
+    
+    const bookingsResult = await pool.query(bookingsQuery, bookingsParams);
+
+    // Get availability notes
+    let notesQuery = `SELECT 
+        an.id,
+        an.vehicle_id,
+        an.vehicle_subunit_id,
+        an.note_date,
+        an.note,
+        an.note_type,
+        vs.license_plate,
+        v.make,
+        v.model
+      FROM availability_notes an
+      LEFT JOIN vehicle_subunits vs ON an.vehicle_subunit_id = vs.id
+      LEFT JOIN vehicles v ON (an.vehicle_id = v.id OR vs.vehicle_id = v.id)
+      WHERE an.note_date >= $1 AND an.note_date < $2`;
+    
+    const notesParams: any[] = [startDate, endDate];
+    let notesParamCount = 3;
+    
+    if (vehicle_id) {
+      notesQuery += ` AND (an.vehicle_id = $${notesParamCount} OR an.vehicle_subunit_id IN (SELECT id FROM vehicle_subunits WHERE vehicle_id = $${notesParamCount}))`;
+      notesParams.push(vehicle_id);
+      notesParamCount++;
+    }
+    
+    notesQuery += ` ORDER BY an.note_date`;
+    
+    const notesResult = await pool.query(notesQuery, notesParams);
+
+    const exportData = {
+      export_date: new Date().toISOString(),
+      date_range: {
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+      },
+      vehicles: vehiclesResult.rows,
+      bookings: bookingsResult.rows,
+      availability_notes: notesResult.rows,
+      summary: {
+        total_vehicles: vehiclesResult.rows.length,
+        total_bookings: bookingsResult.rows.length,
+        total_notes: notesResult.rows.length,
+        total_subunits: vehiclesResult.rows.reduce((sum, v) => sum + parseInt(v.total_subunits || 0), 0),
+        available_subunits: vehiclesResult.rows.reduce((sum, v) => sum + parseInt(v.available_subunits || 0), 0),
+      },
+    };
+
+    if (format === 'csv') {
+      // Generate CSV
+      const csvRows: string[] = [];
+      
+      // Vehicles CSV
+      csvRows.push('=== VEHICLES ===');
+      csvRows.push('Make,Model,Year,Total Subunits,Available,Reserved,Out on Rent,Returned,Maintenance');
+      vehiclesResult.rows.forEach((v) => {
+        csvRows.push(
+          `"${v.make || ''}","${v.model || ''}",${v.year || ''},${v.total_subunits || 0},${v.available_subunits || 0},${v.reserved_subunits || 0},${v.out_on_rent_subunits || 0},${v.returned_subunits || 0},${v.maintenance_subunits || 0}`
+        );
+      });
+      
+      csvRows.push('\n=== BOOKINGS ===');
+      csvRows.push('Booking Number,Vehicle,License Plate,Pickup Date,Dropoff Date,Status,Customer Name,Customer Email,Customer Phone');
+      bookingsResult.rows.forEach((b) => {
+        csvRows.push(
+          `"${b.booking_number || ''}","${b.make || ''} ${b.model || ''}","${b.license_plate || ''}","${b.pickup_date}","${b.dropoff_date}","${b.booking_status || ''}","${b.customer_name || ''}","${b.customer_email || ''}","${b.customer_phone || ''}"`
+        );
+      });
+      
+      csvRows.push('\n=== AVAILABILITY NOTES ===');
+      csvRows.push('Date,Type,Note,Vehicle,License Plate');
+      notesResult.rows.forEach((n) => {
+        csvRows.push(
+          `"${n.note_date}","${n.note_type || ''}","${(n.note || '').replace(/"/g, '""')}","${n.make || ''} ${n.model || ''}","${n.license_plate || ''}"`
+        );
+      });
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename=availability-export-${new Date().toISOString().split('T')[0]}.csv`);
+      res.send(csvRows.join('\n'));
+    } else {
+      // JSON format
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename=availability-export-${new Date().toISOString().split('T')[0]}.json`);
+      res.json(exportData);
+    }
+  } catch (error) {
+    console.error('Error exporting availability:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get availability analytics
+router.get('/availability/analytics', async (req: Request, res: Response) => {
+  try {
+    const { vehicle_id, start_date, end_date } = req.query;
+
+    const startDate = start_date ? new Date(start_date as string) : new Date();
+    startDate.setMonth(startDate.getMonth() - 1); // Default to last month
+    const endDate = end_date ? new Date(end_date as string) : new Date();
+
+    // Get utilization stats
+    let utilizationQuery = `
+      SELECT 
+        DATE(b.pickup_date) as date,
+        COUNT(DISTINCT b.id) as booking_count,
+        COUNT(DISTINCT vs.vehicle_id) as vehicles_used,
+        COUNT(DISTINCT vs.id) as subunits_used
+      FROM bookings b
+      JOIN vehicle_subunits vs ON b.vehicle_subunit_id = vs.id
+      WHERE b.status IN ('confirmed', 'active', 'completed')
+      AND b.pickup_date >= $1
+      AND b.pickup_date <= $2
+    `;
+    const utilParams: any[] = [startDate, endDate];
+    let utilParamCount = 3;
+
+    if (vehicle_id) {
+      utilizationQuery += ` AND vs.vehicle_id = $${utilParamCount}`;
+      utilParams.push(vehicle_id);
+      utilParamCount++;
+    }
+
+    utilizationQuery += ` GROUP BY DATE(b.pickup_date) ORDER BY date`;
+
+    const utilizationResult = await pool.query(utilizationQuery, utilParams);
+
+    // Get availability stats
+    let availabilityQuery = `
+      SELECT 
+        COUNT(DISTINCT vs.id) as total_subunits,
+        COUNT(DISTINCT CASE WHEN vs.status = 'available' THEN vs.id END) as available_count,
+        COUNT(DISTINCT CASE WHEN vs.status = 'reserved' THEN vs.id END) as reserved_count,
+        COUNT(DISTINCT CASE WHEN vs.status = 'out_on_rent' THEN vs.id END) as out_on_rent_count,
+        COUNT(DISTINCT CASE WHEN vs.status = 'maintenance' THEN vs.id END) as maintenance_count
+      FROM vehicle_subunits vs
+      JOIN vehicles v ON vs.vehicle_id = v.id
+      WHERE 1=1
+    `;
+    const availParams: any[] = [];
+    let availParamCount = 1;
+
+    if (vehicle_id) {
+      availabilityQuery += ` AND v.id = $${availParamCount}`;
+      availParams.push(vehicle_id);
+      availParamCount++;
+    }
+
+    const availabilityResult = await pool.query(availabilityQuery, availParams);
+
+    const totalSubunits = parseInt(availabilityResult.rows[0].total_subunits || 0);
+    const availableCount = parseInt(availabilityResult.rows[0].available_count || 0);
+    const utilizationRate = totalSubunits > 0 
+      ? ((totalSubunits - availableCount) / totalSubunits * 100).toFixed(2)
+      : 0;
+
+    res.json({
+      utilization: utilizationResult.rows,
+      availability: availabilityResult.rows[0],
+      utilization_rate: parseFloat(utilizationRate),
+      date_range: {
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching availability analytics:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -892,6 +1665,37 @@ router.put('/vehicle-subunits/:id/status', async (req: Request, res: Response) =
   }
 });
 
+// Bulk update vehicle subunit statuses
+router.post('/vehicle-subunits/bulk-status', async (req: Request, res: Response) => {
+  try {
+    const { subunit_ids, status } = req.body;
+
+    if (!Array.isArray(subunit_ids) || subunit_ids.length === 0) {
+      return res.status(400).json({ error: 'subunit_ids must be a non-empty array' });
+    }
+
+    if (!['available', 'reserved', 'out_on_rent', 'returned', 'maintenance'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const result = await pool.query(
+      `UPDATE vehicle_subunits 
+       SET status = $1, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = ANY($2::uuid[])
+       RETURNING *`,
+      [status, subunit_ids]
+    );
+
+    res.json({
+      updated_count: result.rows.length,
+      subunits: result.rows,
+    });
+  } catch (error) {
+    console.error('Error bulk updating subunit statuses:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Create availability note (block/unblock dates)
 router.post(
   '/availability-notes',
@@ -911,6 +1715,46 @@ router.post(
 
       if (!vehicle_id && !vehicle_subunit_id) {
         return res.status(400).json({ error: 'Either vehicle_id or vehicle_subunit_id is required' });
+      }
+
+      // Check for existing bookings on this date if blocking/maintenance
+      if (note_type === 'blocked' || note_type === 'maintenance') {
+        const noteDate = new Date(note_date);
+        const startDate = new Date(noteDate);
+        startDate.setHours(0, 0, 0, 0);
+        const endDate = new Date(noteDate);
+        endDate.setHours(23, 59, 59, 999);
+
+        let bookingCheckQuery = `
+          SELECT COUNT(*) as count
+          FROM bookings b
+          JOIN vehicle_subunits vs ON b.vehicle_subunit_id = vs.id
+          WHERE b.status = ANY($1::text[])
+          AND (b.pickup_date <= $3 AND b.dropoff_date >= $2)
+        `;
+        const bookingParams: any[] = [['pending', 'waiting_payment', 'confirmed', 'active'], startDate, endDate];
+        let paramCount = 4;
+
+        if (vehicle_id) {
+          bookingCheckQuery += ` AND vs.vehicle_id = $${paramCount}`;
+          bookingParams.push(vehicle_id);
+          paramCount++;
+        } else if (vehicle_subunit_id) {
+          bookingCheckQuery += ` AND vs.id = $${paramCount}`;
+          bookingParams.push(vehicle_subunit_id);
+          paramCount++;
+        }
+
+        const bookingCheckResult = await pool.query(bookingCheckQuery, bookingParams);
+        const bookingCount = parseInt(bookingCheckResult.rows[0].count);
+
+        if (bookingCount > 0) {
+          return res.status(400).json({
+            error: `Cannot create ${note_type} note: ${bookingCount} active booking(s) exist on this date`,
+            warning: true,
+            booking_count: bookingCount,
+          });
+        }
       }
 
       const authReq = req as any;
@@ -934,6 +1778,82 @@ router.post(
       res.status(201).json(result.rows[0]);
     } catch (error) {
       console.error('Error creating availability note:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// Update availability note
+router.put(
+  '/availability-notes/:id',
+  [
+    body('note_date').optional().isISO8601().toDate(),
+    body('note').optional().notEmpty(),
+    body('note_type').optional().isIn(['maintenance', 'blocked', 'special']),
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+      const { note_date, note, note_type } = req.body;
+
+      // Check if note exists
+      const existingResult = await pool.query(
+        'SELECT * FROM availability_notes WHERE id = $1',
+        [id]
+      );
+
+      if (existingResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Availability note not found' });
+      }
+
+      const existingNote = existingResult.rows[0];
+
+      // Build update query dynamically
+      const updates: string[] = [];
+      const values: any[] = [];
+      let paramCount = 1;
+
+      if (note_date !== undefined) {
+        updates.push(`note_date = $${paramCount}`);
+        values.push(note_date);
+        paramCount++;
+      }
+
+      if (note !== undefined) {
+        updates.push(`note = $${paramCount}`);
+        values.push(note);
+        paramCount++;
+      }
+
+      if (note_type !== undefined) {
+        updates.push(`note_type = $${paramCount}`);
+        values.push(note_type);
+        paramCount++;
+      }
+
+      if (updates.length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+
+      updates.push(`updated_at = CURRENT_TIMESTAMP`);
+      values.push(id);
+
+      const result = await pool.query(
+        `UPDATE availability_notes 
+         SET ${updates.join(', ')}
+         WHERE id = $${paramCount}
+         RETURNING *`,
+        values
+      );
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('Error updating availability note:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -1054,6 +1974,35 @@ router.get('/customers', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching customers:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Quick customer search for autocomplete (optimized for speed)
+router.get('/customers/search', async (req: Request, res: Response) => {
+  try {
+    const { q } = req.query;
+    
+    if (!q || typeof q !== 'string') {
+      return res.json([]);
+    }
+    
+    const result = await pool.query(
+      `SELECT id, first_name, last_name, email, phone, 
+              date_of_birth, license_number, license_country, license_expiry, 
+              address, city, country
+       FROM customers 
+       WHERE LOWER(first_name || ' ' || last_name) LIKE LOWER($1) 
+          OR LOWER(email) LIKE LOWER($1)
+          OR phone LIKE $1
+       ORDER BY created_at DESC 
+       LIMIT 10`,
+      [`%${q}%`]
+    );
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error searching customers:', error);
+    res.status(500).json({ error: 'Failed to search customers' });
   }
 });
 
@@ -1549,6 +2498,499 @@ router.delete('/extras/:id', async (req: Request, res: Response) => {
     res.json({ message: 'Extra deleted successfully' });
   } catch (error) {
     console.error('Error deleting extra:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all coupons (admin - includes inactive and expired)
+router.get('/coupons', async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM coupons ORDER BY created_at DESC'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching coupons:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get coupon by ID
+router.get('/coupons/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('SELECT * FROM coupons WHERE id = $1', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Coupon not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching coupon:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Create coupon
+router.post(
+  '/coupons',
+  [
+    body('code').notEmpty().trim(),
+    body('discount_type').isIn(['percentage', 'fixed_amount']),
+    body('discount_value').isFloat({ min: 0 }),
+    body('valid_from').isISO8601().toDate(),
+    body('valid_until').isISO8601().toDate(),
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const {
+        code,
+        description,
+        discount_type,
+        discount_value,
+        minimum_rental_days,
+        minimum_amount,
+        valid_from,
+        valid_until,
+        usage_limit,
+        is_active,
+      } = req.body;
+
+      // Auto-uppercase and remove spaces from code
+      const normalizedCode = code.toUpperCase().replace(/\s+/g, '');
+
+      // Validate discount value
+      if (discount_value <= 0) {
+        return res.status(400).json({ error: 'Discount value must be greater than 0' });
+      }
+
+      // Validate dates
+      if (new Date(valid_from) >= new Date(valid_until)) {
+        return res.status(400).json({ error: 'Valid from date must be before valid until date' });
+      }
+
+      // Check for duplicate code
+      const existingCoupon = await pool.query(
+        'SELECT id FROM coupons WHERE code = $1',
+        [normalizedCode]
+      );
+
+      if (existingCoupon.rows.length > 0) {
+        return res.status(400).json({ error: 'Coupon code already exists' });
+      }
+
+      const result = await pool.query(
+        `INSERT INTO coupons 
+         (code, description, discount_type, discount_value, minimum_rental_days, 
+          minimum_amount, valid_from, valid_until, usage_limit, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING *`,
+        [
+          normalizedCode,
+          description || null,
+          discount_type,
+          discount_value,
+          minimum_rental_days || null,
+          minimum_amount || null,
+          valid_from,
+          valid_until,
+          usage_limit || null,
+          is_active !== undefined ? is_active : true,
+        ]
+      );
+
+      res.status(201).json(result.rows[0]);
+    } catch (error) {
+      console.error('Error creating coupon:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// Update coupon
+router.put(
+  '/coupons/:id',
+  [
+    body('code').optional().notEmpty().trim(),
+    body('discount_type').optional().isIn(['percentage', 'fixed_amount']),
+    body('discount_value').optional().isFloat({ min: 0 }),
+    body('valid_from').optional().isISO8601().toDate(),
+    body('valid_until').optional().isISO8601().toDate(),
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+      const updateFields: string[] = [];
+      const params: any[] = [];
+      let paramCount = 1;
+
+      const allowedFields = [
+        'code',
+        'description',
+        'discount_type',
+        'discount_value',
+        'minimum_rental_days',
+        'minimum_amount',
+        'valid_from',
+        'valid_until',
+        'usage_limit',
+        'is_active',
+      ];
+
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          let value = req.body[field];
+
+          // Auto-uppercase and remove spaces from code
+          if (field === 'code') {
+            value = value.toUpperCase().replace(/\s+/g, '');
+
+            // Check for duplicate code (excluding current coupon)
+            const existingCoupon = await pool.query(
+              'SELECT id FROM coupons WHERE code = $1 AND id != $2',
+              [value, id]
+            );
+
+            if (existingCoupon.rows.length > 0) {
+              return res.status(400).json({ error: 'Coupon code already exists' });
+            }
+          }
+
+          updateFields.push(`${field} = $${paramCount}`);
+          params.push(value);
+          paramCount++;
+        }
+      }
+
+      if (updateFields.length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+
+      // Validate dates if both are being updated
+      if (req.body.valid_from && req.body.valid_until) {
+        if (new Date(req.body.valid_from) >= new Date(req.body.valid_until)) {
+          return res.status(400).json({ error: 'Valid from date must be before valid until date' });
+        }
+      }
+
+      params.push(id);
+
+      const result = await pool.query(
+        `UPDATE coupons SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP 
+         WHERE id = $${paramCount} RETURNING *`,
+        params
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Coupon not found' });
+      }
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('Error updating coupon:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// Toggle coupon active status
+router.put('/coupons/:id/toggle', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Get current status
+    const currentResult = await pool.query(
+      'SELECT is_active FROM coupons WHERE id = $1',
+      [id]
+    );
+
+    if (currentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Coupon not found' });
+    }
+
+    const newStatus = !currentResult.rows[0].is_active;
+
+    const result = await pool.query(
+      'UPDATE coupons SET is_active = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      [newStatus, id]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error toggling coupon status:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete coupon
+router.delete('/coupons/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Check if coupon has been used
+    const couponResult = await pool.query(
+      'SELECT usage_count FROM coupons WHERE id = $1',
+      [id]
+    );
+
+    if (couponResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Coupon not found' });
+    }
+
+    const usageCount = parseInt(couponResult.rows[0].usage_count) || 0;
+
+    if (usageCount > 0) {
+      return res.status(400).json({
+        error: `Cannot delete coupon that has been used ${usageCount} time(s). Deactivate it instead.`,
+      });
+    }
+
+    const result = await pool.query('DELETE FROM coupons WHERE id = $1 RETURNING id', [id]);
+
+    res.json({ message: 'Coupon deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting coupon:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all locations (admin - includes inactive)
+router.get('/locations', async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM locations ORDER BY city, name'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching locations:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get location by ID
+router.get('/locations/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('SELECT * FROM locations WHERE id = $1', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Location not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching location:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Create location
+router.post(
+  '/locations',
+  [
+    body('name').notEmpty().trim(),
+    body('address').notEmpty().trim(),
+    body('city').notEmpty().trim(),
+    body('email').optional().isEmail(),
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const {
+        name,
+        address,
+        city,
+        country,
+        phone,
+        email,
+        latitude,
+        longitude,
+        is_active,
+      } = req.body;
+
+      const result = await pool.query(
+        `INSERT INTO locations 
+         (name, address, city, country, phone, email, latitude, longitude, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [
+          name,
+          address,
+          city,
+          country || 'Morocco',
+          phone || null,
+          email || null,
+          latitude || null,
+          longitude || null,
+          is_active !== undefined ? is_active : true,
+        ]
+      );
+
+      res.status(201).json(result.rows[0]);
+    } catch (error) {
+      console.error('Error creating location:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// Update location
+router.put(
+  '/locations/:id',
+  [
+    body('name').optional().notEmpty().trim(),
+    body('address').optional().notEmpty().trim(),
+    body('city').optional().notEmpty().trim(),
+    body('email').optional().isEmail(),
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+      const updateFields: string[] = [];
+      const params: any[] = [];
+      let paramCount = 1;
+
+      const allowedFields = [
+        'name',
+        'address',
+        'city',
+        'country',
+        'phone',
+        'email',
+        'latitude',
+        'longitude',
+        'is_active',
+      ];
+
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          updateFields.push(`${field} = $${paramCount}`);
+          params.push(req.body[field]);
+          paramCount++;
+        }
+      }
+
+      if (updateFields.length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+
+      params.push(id);
+
+      const result = await pool.query(
+        `UPDATE locations SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP 
+         WHERE id = $${paramCount} RETURNING *`,
+        params
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Location not found' });
+      }
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('Error updating location:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+// Toggle location active status
+router.put('/locations/:id/toggle', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Get current status
+    const currentResult = await pool.query(
+      'SELECT is_active FROM locations WHERE id = $1',
+      [id]
+    );
+
+    if (currentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Location not found' });
+    }
+
+    const currentStatus = currentResult.rows[0].is_active;
+    const newStatus = !currentStatus;
+
+    // If trying to deactivate, check for active bookings
+    if (currentStatus === true && newStatus === false) {
+      const activeBookingsResult = await pool.query(
+        `SELECT COUNT(*) as count FROM bookings 
+         WHERE (pickup_location_id = $1 OR dropoff_location_id = $1)
+         AND status IN ('pending', 'waiting_payment', 'confirmed', 'active')`,
+        [id]
+      );
+
+      const activeBookingsCount = parseInt(activeBookingsResult.rows[0].count);
+
+      if (activeBookingsCount > 0) {
+        return res.status(400).json({
+          error: `Cannot deactivate location with ${activeBookingsCount} active booking(s)`,
+        });
+      }
+    }
+
+    const result = await pool.query(
+      'UPDATE locations SET is_active = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      [newStatus, id]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error toggling location status:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete location
+router.delete('/locations/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Check if location has any bookings
+    const bookingsResult = await pool.query(
+      `SELECT COUNT(*) as count FROM bookings 
+       WHERE pickup_location_id = $1 OR dropoff_location_id = $1`,
+      [id]
+    );
+
+    const bookingsCount = parseInt(bookingsResult.rows[0].count);
+
+    if (bookingsCount > 0) {
+      return res.status(400).json({
+        error: `Cannot delete location with ${bookingsCount} booking(s). Mark it as inactive instead.`,
+      });
+    }
+
+    const result = await pool.query('DELETE FROM locations WHERE id = $1 RETURNING id', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Location not found' });
+    }
+
+    res.json({ message: 'Location deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting location:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

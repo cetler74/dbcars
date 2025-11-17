@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
@@ -7,7 +7,10 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 5000, // 5 second timeout to prevent hanging
+  // Increase timeout to better accommodate booking flow (DB operations, pricing, etc.)
+  // Axios timeouts trigger a client-side error with no `error.response`, which is what
+  // we are currently seeing in the booking form logs.
+  timeout: 15000, // 15 seconds
 });
 
 // Add auth token to requests
@@ -46,6 +49,17 @@ export const checkAvailability = async (
 ) => {
   const response = await api.get(`/vehicles/${vehicleId}/availability`, {
     params: { from, to },
+  });
+  return response.data;
+};
+
+export const getVehicleBlockedDates = async (
+  vehicleId: string,
+  month?: number,
+  year?: number
+) => {
+  const response = await api.get(`/vehicles/${vehicleId}/blocked-dates`, {
+    params: { month, year },
   });
   return response.data;
 };
@@ -104,6 +118,33 @@ export const getBooking = async (bookingNumber: string) => {
   return response.data;
 };
 
+// Drafts
+export const getDrafts = async () => {
+  const response = await api.get('/admin/drafts');
+  return response.data;
+};
+
+export const getDraft = async (id: string) => {
+  const response = await api.get(`/admin/drafts/${id}`);
+  return response.data;
+};
+
+export const saveDraft = async (draftData: {
+  id?: string;
+  draft_data: any;
+  customer_name?: string | null;
+  vehicle_name?: string | null;
+  total_price?: number | null;
+}) => {
+  const response = await api.post('/admin/drafts', draftData);
+  return response.data;
+};
+
+export const deleteDraft = async (id: string) => {
+  const response = await api.delete(`/admin/drafts/${id}`);
+  return response.data;
+};
+
 // Auth
 export const login = async (email: string, password: string) => {
   const response = await api.post('/auth/login', { email, password });
@@ -121,6 +162,11 @@ export const getAdminBookings = async (filters?: {
   vehicle_id?: string;
   date_from?: string;
   date_to?: string;
+  booking_number?: string;
+  customer_name?: string;
+  vehicle_search?: string;
+  page?: number;
+  per_page?: number;
 }) => {
   const response = await api.get('/admin/bookings', { params: filters });
   return response.data;
@@ -128,6 +174,11 @@ export const getAdminBookings = async (filters?: {
 
 export const updateBookingStatus = async (id: string, status: string, notes?: string, payment_link?: string) => {
   const response = await api.put(`/admin/bookings/${id}`, { status, notes, payment_link });
+  return response.data;
+};
+
+export const editBooking = async (id: string, data: { pickup_date?: string; dropoff_date?: string; extras?: any[] }) => {
+  const response = await api.put(`/admin/bookings/${id}/edit`, data);
   return response.data;
 };
 
@@ -160,6 +211,47 @@ export const getAvailability = async (filters?: {
   return response.data;
 };
 
+export const getAvailabilityConflicts = async (filters?: {
+  vehicle_id?: string;
+  start_date?: string;
+  end_date?: string;
+}) => {
+  const response = await api.get('/admin/availability/conflicts', { params: filters });
+  return response.data;
+};
+
+export const getAvailabilityAnalytics = async (filters?: {
+  vehicle_id?: string;
+  start_date?: string;
+  end_date?: string;
+}) => {
+  const response = await api.get('/admin/availability/analytics', { params: filters });
+  return response.data;
+};
+
+export const exportAvailability = async (filters?: {
+  vehicle_id?: string;
+  start_date?: string;
+  end_date?: string;
+  format?: 'json' | 'csv';
+}) => {
+  if (filters?.format === 'csv') {
+    const response = await axios.get(`${API_URL}/admin/availability/export`, {
+      params: filters,
+      responseType: 'blob',
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
+      },
+    });
+    return response.data;
+  } else {
+    const response = await api.get('/admin/availability/export', {
+      params: filters,
+    });
+    return response.data;
+  }
+};
+
 export const getVehicleSubunits = async (vehicleId: string) => {
   const response = await api.get(`/admin/vehicles/${vehicleId}/subunits`);
   return response.data;
@@ -167,6 +259,14 @@ export const getVehicleSubunits = async (vehicleId: string) => {
 
 export const updateSubunitStatus = async (subunitId: string, status: string) => {
   const response = await api.put(`/admin/vehicle-subunits/${subunitId}/status`, { status });
+  return response.data;
+};
+
+export const bulkUpdateSubunitStatus = async (subunitIds: string[], status: string) => {
+  const response = await api.post('/admin/vehicle-subunits/bulk-status', {
+    subunit_ids: subunitIds,
+    status,
+  });
   return response.data;
 };
 
@@ -178,6 +278,18 @@ export const createAvailabilityNote = async (noteData: {
   note_type: 'maintenance' | 'blocked' | 'special';
 }) => {
   const response = await api.post('/admin/availability-notes', noteData);
+  return response.data;
+};
+
+export const updateAvailabilityNote = async (
+  noteId: string,
+  noteData: {
+    note_date?: string;
+    note?: string;
+    note_type?: 'maintenance' | 'blocked' | 'special';
+  }
+) => {
+  const response = await api.put(`/admin/availability-notes/${noteId}`, noteData);
   return response.data;
 };
 
@@ -265,6 +377,11 @@ export const uploadImages = async (files: File[]): Promise<string[]> => {
 };
 
 // Customers
+export const searchCustomers = async (query: string) => {
+  const response = await api.get('/admin/customers/search', { params: { q: query } });
+  return response.data;
+};
+
 export const getAdminCustomers = async (filters?: {
   search?: string;
   blacklisted?: boolean;
@@ -409,6 +526,116 @@ export const updateBlogPost = async (
 
 export const deleteBlogPost = async (id: string) => {
   const response = await api.delete(`/blog/${id}`);
+  return response.data;
+};
+
+// Coupons (Admin)
+export const getAdminCoupons = async () => {
+  const response = await api.get('/admin/coupons');
+  return response.data;
+};
+
+export const getAdminCoupon = async (id: string) => {
+  const response = await api.get(`/admin/coupons/${id}`);
+  return response.data;
+};
+
+export const createCoupon = async (couponData: {
+  code: string;
+  description?: string;
+  discount_type: 'percentage' | 'fixed_amount';
+  discount_value: number;
+  minimum_rental_days?: number | null;
+  minimum_amount?: number | null;
+  valid_from: string;
+  valid_until: string;
+  usage_limit?: number | null;
+  is_active?: boolean;
+}) => {
+  const response = await api.post('/admin/coupons', couponData);
+  return response.data;
+};
+
+export const updateCoupon = async (
+  id: string,
+  couponData: {
+    code?: string;
+    description?: string;
+    discount_type?: 'percentage' | 'fixed_amount';
+    discount_value?: number;
+    minimum_rental_days?: number | null;
+    minimum_amount?: number | null;
+    valid_from?: string;
+    valid_until?: string;
+    usage_limit?: number | null;
+    is_active?: boolean;
+  }
+) => {
+  const response = await api.put(`/admin/coupons/${id}`, couponData);
+  return response.data;
+};
+
+export const toggleCouponStatus = async (id: string) => {
+  const response = await api.put(`/admin/coupons/${id}/toggle`);
+  return response.data;
+};
+
+export const deleteCoupon = async (id: string) => {
+  const response = await api.delete(`/admin/coupons/${id}`);
+  return response.data;
+};
+
+// Locations (Admin)
+export const getAdminLocations = async () => {
+  const response = await api.get('/admin/locations');
+  return response.data;
+};
+
+export const getAdminLocation = async (id: string) => {
+  const response = await api.get(`/admin/locations/${id}`);
+  return response.data;
+};
+
+export const createLocation = async (locationData: {
+  name: string;
+  address: string;
+  city: string;
+  country?: string;
+  phone?: string;
+  email?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  is_active?: boolean;
+}) => {
+  const response = await api.post('/admin/locations', locationData);
+  return response.data;
+};
+
+export const updateLocation = async (
+  id: string,
+  locationData: {
+    name?: string;
+    address?: string;
+    city?: string;
+    country?: string;
+    phone?: string;
+    email?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    is_active?: boolean;
+  }
+) => {
+  const response = await api.put(`/admin/locations/${id}`, locationData);
+  return response.data;
+};
+
+export const toggleLocationStatus = async (id: string) => {
+  const response = await api.put(`/admin/locations/${id}/toggle`);
+  return response.data;
+};
+
+export const deleteLocation = async (id: string) => {
+  const response = await api.delete(`/admin/locations/${id}`);
   return response.data;
 };
 

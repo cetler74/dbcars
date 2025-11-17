@@ -119,6 +119,94 @@ export default function AboutPage() {
           </div>
         </section>
 
+        {/* Section 3 – Our Values & Mission (media-focused luxury section) */}
+        <section className="py-14 md:py-18 lg:py-20 bg-black">
+          <div className="container mx-auto px-4 md:px-6 lg:px-12 grid grid-cols-1 lg:grid-cols-[1.1fr,1fr] gap-10 lg:gap-16 items-center">
+            {/* Left: large media */}
+            <div className="relative h-72 md:h-80 lg:h-[360px] rounded-3xl overflow-hidden">
+              <Image
+                src="/hero-about.jpg"
+                alt="Night drive through Morocco in a luxury car"
+                fill
+                className="object-cover"
+                unoptimized
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+              <div className="absolute bottom-4 left-4 right-4 md:bottom-6 md:left-6 md:right-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[0.65rem] md:text-xs tracking-[0.25em] uppercase text-gray-300 mb-1">
+                      Our values in motion
+                    </p>
+                    <p className="text-sm md:text-base text-white font-medium max-w-sm">
+                      Every journey blends precision, discretion, and a genuine care for how you arrive.
+                    </p>
+                  </div>
+                  <div className="hidden md:flex flex-col items-end text-right">
+                    <p className="text-[0.6rem] tracking-[0.25em] uppercase text-gray-400">
+                      Morocco · City · Coast · Desert
+                    </p>
+                    <p className="text-xs text-gray-200">
+                      One philosophy, on every road.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: values & mission content */}
+            <div className="space-y-6 text-white">
+              <p className="text-xs md:text-sm tracking-[0.25em] uppercase text-gray-400">
+                Our values & mission
+              </p>
+              <h2 className="text-2xl md:text-3xl lg:text-4xl font-semibold leading-tight">
+                A brand built on discretion, timing, and genuine hospitality.
+              </h2>
+              <p className="text-sm md:text-base text-gray-200 leading-relaxed">
+                Our mission is simple: to make every movement across Morocco feel composed, confident,
+                and completely effortless, whether you are travelling for business, celebration, or escape.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-5">
+                <div className="rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5">
+                  <p className="text-xs uppercase tracking-[0.2em] text-gray-300 mb-1">
+                    Discretion
+                  </p>
+                  <p className="text-sm md:text-base text-gray-100">
+                    We move quietly around your schedule, keeping every interaction refined,
+                    private, and secure.
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5">
+                  <p className="text-xs uppercase tracking-[0.2em] text-gray-300 mb-1">
+                    Precision
+                  </p>
+                  <p className="text-sm md:text-base text-gray-100">
+                    Route planning, vehicle preparation, and timing are handled with the same care
+                    as a five‑star arrival.
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5">
+                  <p className="text-xs uppercase tracking-[0.2em] text-gray-300 mb-1">
+                    Authentic hospitality
+                  </p>
+                  <p className="text-sm md:text-base text-gray-100">
+                    A Moroccan welcome expressed through attentive service, thoughtful details,
+                    and real human warmth.
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5">
+                  <p className="text-xs uppercase tracking-[0.2em] text-gray-300 mb-1">
+                    Responsibility
+                  </p>
+                  <p className="text-sm md:text-base text-gray-100">
+                    Vehicles maintained to the highest standards, with safety and comfort as
+                    non‑negotiables for every guest.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
 
       </main>
     </>

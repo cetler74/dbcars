@@ -168,18 +168,8 @@ export default function Home() {
     dropoff_date: null as Date | null,
   });
 
-  // Save to localStorage whenever search form changes
-  useEffect(() => {
-    if (searchForm.pickup_location_id || searchForm.pickup_date || searchForm.dropoff_date) {
-      const searchData = {
-        pickup_location_id: searchForm.pickup_location_id,
-        pickup_date: searchForm.pickup_date ? searchForm.pickup_date.toISOString() : null,
-        dropoff_date: searchForm.dropoff_date ? searchForm.dropoff_date.toISOString() : null,
-        dropoff_location_id: searchForm.dropoff_location_id || null,
-      };
-      localStorage.setItem('carSearchData', JSON.stringify(searchData));
-    }
-  }, [searchForm.pickup_location_id, searchForm.pickup_date, searchForm.dropoff_date, searchForm.dropoff_location_id]);
+  // REMOVED AUTO-SAVE to prevent race conditions
+  // Data is now only saved when user clicks "Show Vehicles" button
 
   useEffect(() => {
     // Load data asynchronously without blocking render
@@ -223,17 +213,29 @@ export default function Home() {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Save to localStorage for persistence across pages
-    if (searchForm.pickup_location_id || searchForm.pickup_date || searchForm.dropoff_date) {
-      const searchData = {
-        pickup_location_id: searchForm.pickup_location_id,
-        pickup_date: searchForm.pickup_date ? searchForm.pickup_date.toISOString() : null,
-        dropoff_date: searchForm.dropoff_date ? searchForm.dropoff_date.toISOString() : null,
-        dropoff_location_id: searchForm.dropoff_location_id || null,
-      };
-      localStorage.setItem('carSearchData', JSON.stringify(searchData));
+    // Determine the dropoff location based on user's choice
+    let dropoffLocationId;
+    if (showReturnLocation) {
+      // User clicked "Different return" - use their selected dropoff location
+      dropoffLocationId = searchForm.dropoff_location_id || '';
+    } else {
+      // User wants same location - use pickup for dropoff
+      dropoffLocationId = searchForm.pickup_location_id;
     }
     
+    // Save to localStorage ONCE when form is submitted (no auto-save to prevent race conditions)
+    const searchData = {
+      pickup_location_id: searchForm.pickup_location_id,
+      pickup_date: searchForm.pickup_date ? searchForm.pickup_date.toISOString() : null,
+      dropoff_date: searchForm.dropoff_date ? searchForm.dropoff_date.toISOString() : null,
+      dropoff_location_id: dropoffLocationId,
+      showReturnLocation: showReturnLocation,
+      savedAt: new Date().toISOString(),
+    };
+    
+    localStorage.setItem('carSearchData', JSON.stringify(searchData));
+    
+    // Navigate
     const params = new URLSearchParams();
     
     if (searchForm.pickup_location_id) {
@@ -356,12 +358,13 @@ export default function Home() {
                       <div className="mt-3">
                         <select
                           value={searchForm.dropoff_location_id}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            console.log('Dropoff location changed to:', e.target.value);
                             setSearchForm((prev) => ({
                               ...prev,
                               dropoff_location_id: e.target.value,
-                            }))
-                          }
+                            }));
+                          }}
                           className="w-full px-4 py-3.5 text-base border-none rounded-xl focus:outline-none focus:border focus:border-white bg-[#3a3a3a] text-white font-medium transition-all"
                         >
                           <option value="">Select return location</option>
@@ -394,9 +397,13 @@ export default function Home() {
                             setSearchForm((prev) => ({ ...prev, pickup_date: date }))
                           }
                           minDate={new Date()}
+                          showTimeSelect
+                          timeFormat="HH:mm"
+                          timeIntervals={30}
+                          timeCaption="Time"
+                          dateFormat="MMM dd, yyyy HH:mm"
                           className="w-full pl-12 pr-4 py-3.5 text-base border-none rounded-xl focus:outline-none focus:border focus:border-white bg-[#3a3a3a] text-white font-medium transition-all"
-                          dateFormat="MMM dd, yyyy"
-                          placeholderText="Pickup date"
+                          placeholderText="Pickup date & time"
                           withPortal
                         />
                       </div>
@@ -414,9 +421,13 @@ export default function Home() {
                             setSearchForm((prev) => ({ ...prev, dropoff_date: date }))
                           }
                           minDate={searchForm.pickup_date || new Date()}
+                          showTimeSelect
+                          timeFormat="HH:mm"
+                          timeIntervals={30}
+                          timeCaption="Time"
+                          dateFormat="MMM dd, yyyy HH:mm"
                           className="w-full pl-12 pr-4 py-3.5 text-base border-none rounded-xl focus:outline-none focus:border focus:border-white bg-[#3a3a3a] text-white font-medium transition-all"
-                          dateFormat="MMM dd, yyyy"
-                          placeholderText="Return date"
+                          placeholderText="Return date & time"
                           withPortal
                         />
                       </div>
@@ -491,7 +502,7 @@ export default function Home() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 md:gap-8 max-w-[90rem] mx-auto scale-105 md:scale-115">
             {/* Luxury Sedans */}
             <Link
-              href="/cars?category=luxury-sedans"
+              href="/cars?category=luxury_sedans"
               className="group relative rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:scale-105"
               style={{
                 backgroundImage: 'url("/category-images/luxury-sedans.png")',
@@ -506,9 +517,26 @@ export default function Home() {
               </div>
             </Link>
 
-            {/* Sports Cars */}
+            {/* Economic */}
             <Link
-              href="/cars?category=sports-cars"
+              href="/cars?category=economic"
+              className="group relative rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:scale-105"
+              style={{
+                backgroundImage: 'url("/category-images/economic.png")',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }}
+            >
+              <div className="absolute inset-0 bg-black/50 group-hover:bg-black/20 transition-all duration-300"></div>
+              <div className="aspect-square flex flex-col items-center justify-center p-6 text-white relative z-10">
+                <h3 className="text-lg md:text-xl font-bold text-center group-hover:opacity-0 transition-opacity duration-300">Economic</h3>
+                <p className="text-sm text-gray-200 text-center mt-2 group-hover:opacity-0 transition-opacity duration-300">Affordable & Efficient</p>
+              </div>
+            </Link>
+
+            {/* Sportscars */}
+            <Link
+              href="/cars?category=sportscars"
               className="group relative rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:scale-105"
               style={{
                 backgroundImage: 'url("/category-images/sports-cars.png")',
@@ -518,25 +546,8 @@ export default function Home() {
             >
               <div className="absolute inset-0 bg-black/50 group-hover:bg-black/20 transition-all duration-300"></div>
               <div className="aspect-square flex flex-col items-center justify-center p-6 text-white relative z-10">
-                <h3 className="text-lg md:text-xl font-bold text-center group-hover:opacity-0 transition-opacity duration-300">Sports Cars</h3>
+                <h3 className="text-lg md:text-xl font-bold text-center group-hover:opacity-0 transition-opacity duration-300">Sportscars</h3>
                 <p className="text-sm text-gray-200 text-center mt-2 group-hover:opacity-0 transition-opacity duration-300">High Performance</p>
-              </div>
-            </Link>
-
-            {/* SUVs */}
-            <Link
-              href="/cars?category=suvs"
-              className="group relative rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:scale-105"
-              style={{
-                backgroundImage: 'url("/category-images/suvs.png")',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-              }}
-            >
-              <div className="absolute inset-0 bg-black/50 group-hover:bg-black/20 transition-all duration-300"></div>
-              <div className="aspect-square flex flex-col items-center justify-center p-6 text-white relative z-10">
-                <h3 className="text-lg md:text-xl font-bold text-center group-hover:opacity-0 transition-opacity duration-300">SUVs</h3>
-                <p className="text-sm text-gray-200 text-center mt-2 group-hover:opacity-0 transition-opacity duration-300">Spacious & Powerful</p>
               </div>
             </Link>
 
@@ -557,20 +568,20 @@ export default function Home() {
               </div>
             </Link>
 
-            {/* Economic */}
+            {/* SUVs */}
             <Link
-              href="/cars?category=economic"
+              href="/cars?category=suvs"
               className="group relative rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:scale-105"
               style={{
-                backgroundImage: 'url("/category-images/economic.png")',
+                backgroundImage: 'url("/category-images/suvs.png")',
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
               }}
             >
               <div className="absolute inset-0 bg-black/50 group-hover:bg-black/20 transition-all duration-300"></div>
               <div className="aspect-square flex flex-col items-center justify-center p-6 text-white relative z-10">
-                <h3 className="text-lg md:text-xl font-bold text-center group-hover:opacity-0 transition-opacity duration-300">Economic</h3>
-                <p className="text-sm text-gray-200 text-center mt-2 group-hover:opacity-0 transition-opacity duration-300">Affordable & Efficient</p>
+                <h3 className="text-lg md:text-xl font-bold text-center group-hover:opacity-0 transition-opacity duration-300">SUVs</h3>
+                <p className="text-sm text-gray-200 text-center mt-2 group-hover:opacity-0 transition-opacity duration-300">Spacious & Powerful</p>
               </div>
             </Link>
           </div>

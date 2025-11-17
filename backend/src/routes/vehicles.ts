@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import pool from '../config/database';
+import { ACTIVE_BOOKING_STATUSES } from '../services/availability';
 
 const router = express.Router();
 
@@ -57,13 +58,9 @@ router.get('/', async (req: Request, res: Response) => {
              FROM bookings b
              JOIN vehicle_subunits vs ON b.vehicle_subunit_id = vs.id
              WHERE vs.vehicle_id = $1
-             AND b.status IN ('pending', 'confirmed', 'active')
-             AND (
-               (b.pickup_date <= $2 AND b.dropoff_date >= $2)
-               OR (b.pickup_date <= $3 AND b.dropoff_date >= $3)
-               OR (b.pickup_date >= $2 AND b.dropoff_date <= $3)
-             )`,
-            [vehicle.id, fromDate, toDate]
+             AND b.status = ANY($4::text[])
+             AND (b.pickup_date <= $3 AND b.dropoff_date >= $2)`,
+            [vehicle.id, fromDate, toDate, ACTIVE_BOOKING_STATUSES]
           );
 
           const bookedCount = parseInt(availabilityResult.rows[0].count);
@@ -82,6 +79,57 @@ router.get('/', async (req: Request, res: Response) => {
     res.json(vehicles);
   } catch (error) {
     console.error('Error fetching vehicles:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get vehicle blocked dates for date picker (must come before /:id route)
+router.get('/:id/blocked-dates', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { month, year } = req.query;
+
+    const targetDate = new Date();
+    const targetMonth = month ? parseInt(month as string) : targetDate.getMonth() + 1;
+    const targetYear = year ? parseInt(year as string) : targetDate.getFullYear();
+
+    // Get a wider range: current date to 12 months forward to cover calendar navigation
+    const firstDay = new Date(); // Start from today
+    const lastDay = new Date();
+    lastDay.setFullYear(lastDay.getFullYear() + 1); // 12 months ahead
+
+    // Get all active bookings
+    const bookingsResult = await pool.query(
+      `SELECT b.pickup_date, b.dropoff_date, b.status as booking_status
+       FROM bookings b
+       JOIN vehicle_subunits vs ON b.vehicle_subunit_id = vs.id
+       WHERE vs.vehicle_id = $1
+       AND b.status NOT IN ('cancelled')
+       AND (
+         (b.pickup_date <= $3 AND b.dropoff_date >= $2)
+         OR (b.pickup_date >= $2 AND b.dropoff_date <= $3)
+       )
+       ORDER BY b.pickup_date`,
+      [id, firstDay, lastDay]
+    );
+
+    // Get availability notes (maintenance/blocked)
+    const notesResult = await pool.query(
+      `SELECT note_date, note_type
+       FROM availability_notes
+       WHERE vehicle_id = $1
+       AND note_date >= $2
+       AND note_date <= $3
+       AND note_type IN ('maintenance', 'blocked')`,
+      [id, firstDay, lastDay]
+    );
+
+    res.json({
+      bookings: bookingsResult.rows,
+      blocked_dates: notesResult.rows,
+    });
+  } catch (error) {
+    console.error('Error fetching blocked dates:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -108,20 +156,16 @@ router.get('/:id/availability', async (req: Request, res: Response) => {
     const totalSubunits = subunitsResult.rows.length;
 
     // Check bookings in this date range
-    // Include 'pending' status to match calendar view and prevent double bookings
+    // Use standardized active booking statuses to prevent double bookings
     const bookingsResult = await pool.query(
       `SELECT vehicle_subunit_id, pickup_date, dropoff_date
        FROM bookings
        WHERE vehicle_subunit_id IN (
          SELECT id FROM vehicle_subunits WHERE vehicle_id = $1
        )
-       AND status IN ('pending', 'confirmed', 'active')
-       AND (
-         (pickup_date <= $2 AND dropoff_date >= $2)
-         OR (pickup_date <= $3 AND dropoff_date >= $3)
-         OR (pickup_date >= $2 AND dropoff_date <= $3)
-       )`,
-      [id, fromDate, toDate]
+       AND status = ANY($4::text[])
+       AND (pickup_date <= $3 AND dropoff_date >= $2)`,
+      [id, fromDate, toDate, ACTIVE_BOOKING_STATUSES]
     );
 
     const bookedSubunits = new Set(bookingsResult.rows.map((b) => b.vehicle_subunit_id));

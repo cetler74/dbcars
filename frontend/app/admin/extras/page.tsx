@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import AdminLayout from '@/components/AdminLayout';
+import { useEffect, useState, useRef } from 'react';
 import {
   getAdminExtras,
   createExtra,
@@ -9,13 +8,34 @@ import {
   deleteExtra,
   uploadImage,
 } from '@/lib/api';
-import Image from 'next/image';
+import toast from 'react-hot-toast';
+import { 
+  Gift, 
+  Plus, 
+  Edit, 
+  Trash2, 
+  Image as ImageIcon,
+  Euro,
+  Tag,
+  Calendar,
+  CheckCircle2,
+  XCircle,
+  X,
+  Save,
+  Upload,
+  MoreVertical
+} from 'lucide-react';
+import StatusBadge from '@/components/admin/StatusBadge';
+import LoadingSpinner from '@/components/admin/LoadingSpinner';
+import EmptyState from '@/components/admin/EmptyState';
 
 export default function AdminExtrasPage() {
   const [extras, setExtras] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingExtra, setEditingExtra] = useState<any>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -31,6 +51,19 @@ export default function AdminExtrasPage() {
     loadExtras();
   }, []);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openMenuId && menuRefs.current[openMenuId]) {
+        if (!menuRefs.current[openMenuId]?.contains(event.target as Node)) {
+          setOpenMenuId(null);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [openMenuId]);
+
   const loadExtras = async () => {
     setLoading(true);
     try {
@@ -38,6 +71,7 @@ export default function AdminExtrasPage() {
       setExtras(data);
     } catch (error) {
       console.error('Error loading extras:', error);
+      toast.error('Failed to load extras');
     } finally {
       setLoading(false);
     }
@@ -48,15 +82,17 @@ export default function AdminExtrasPage() {
     try {
       if (editingExtra) {
         await updateExtra(editingExtra.id, formData);
+        toast.success('Extra updated successfully!');
       } else {
         await createExtra(formData);
+        toast.success('Extra created successfully!');
       }
       setShowForm(false);
       setEditingExtra(null);
       resetForm();
       loadExtras();
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Error saving extra');
+      toast.error(error.response?.data?.error || 'Error saving extra');
     }
   };
 
@@ -77,9 +113,10 @@ export default function AdminExtrasPage() {
     if (!confirm('Are you sure you want to delete this extra?')) return;
     try {
       await deleteExtra(id);
+      toast.success('Extra deleted successfully');
       loadExtras();
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Error deleting extra');
+      toast.error(error.response?.data?.error || 'Error deleting extra');
     }
   };
 
@@ -103,9 +140,10 @@ export default function AdminExtrasPage() {
     try {
       const imageUrl = await uploadImage(file);
       setFormData((prev) => ({ ...prev, cover_image: imageUrl }));
+      toast.success('Cover image uploaded successfully');
     } catch (error) {
       console.error('Error uploading cover image:', error);
-      alert('Error uploading cover image');
+      toast.error('Error uploading cover image');
     } finally {
       setUploadingCoverImage(false);
     }
@@ -129,168 +167,448 @@ export default function AdminExtrasPage() {
 
   const formatDate = (date: string | null) => {
     if (!date) return 'N/A';
-    return new Date(date).toLocaleDateString();
+    return new Date(date).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency: 'EUR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
   };
 
   return (
-    <AdminLayout>
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Extras Management</h1>
+    <>
+      {/* Header Section */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Extras Management</h1>
+          <p className="text-gray-600 text-lg">Manage additional services and extras for bookings</p>
+        </div>
         <button
           onClick={() => {
             setShowForm(true);
             setEditingExtra(null);
             resetForm();
           }}
-          className="bg-gray-900 text-white px-6 py-2 rounded-lg hover:bg-gray-800"
+          className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl hover:from-blue-700 hover:to-blue-600 transition-all text-sm font-semibold flex items-center gap-2 shadow-md hover:shadow-lg"
         >
+          <Plus className="w-4 h-4" />
           Add Extra
         </button>
       </div>
 
+      {/* Extras List */}
+      {loading ? (
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-8">
+          <LoadingSpinner size="md" text="Loading extras..." />
+        </div>
+      ) : extras.length === 0 ? (
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <EmptyState
+            icon={Gift}
+            title="No extras found"
+            description="Get started by adding your first extra service for bookings."
+          />
+        </div>
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-100 hidden md:table">
+              <thead className="bg-gray-50/50">
+                <tr>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    Cover Photo
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    Description
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    Price
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    Price Type
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    Created
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-100">
+                {extras.map((extra) => (
+                  <tr key={extra.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {extra.cover_image ? (
+                        <div className="w-20 h-15 rounded-xl overflow-hidden border-2 border-gray-200 shadow-sm">
+                          <img
+                            src={getImageUrl(extra.cover_image) || ''}
+                            alt={extra.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="60"%3E%3Crect fill="%23e5e7eb" width="80" height="60"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="10" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-20 h-15 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl border-2 border-gray-200 flex items-center justify-center">
+                          <ImageIcon className="w-6 h-6 text-gray-400" />
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-bold text-gray-900">{extra.name}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-gray-600 max-w-xs truncate">
+                        {extra.description || 'N/A'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <Euro className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm font-bold text-gray-900">
+                          {formatCurrency(Number(extra.price))}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <Tag className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm font-medium text-gray-700 capitalize">
+                          {extra.price_type.replace('_', ' ')}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {extra.is_active ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-br from-emerald-50 to-green-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-semibold">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Active
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-br from-red-50 to-rose-50 text-red-700 border border-red-200 rounded-full text-xs font-semibold">
+                          <XCircle className="w-3.5 h-3.5" />
+                          Inactive
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm text-gray-600">
+                          {formatDate(extra.created_at)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="relative" ref={(el) => (menuRefs.current[extra.id] = el)}>
+                        <button
+                          onClick={() => setOpenMenuId(openMenuId === extra.id ? null : extra.id)}
+                          className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
+                        {openMenuId === extra.id && (
+                          <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1">
+                            <button
+                              onClick={() => {
+                                handleEdit(extra);
+                                setOpenMenuId(null);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                            >
+                              <Edit className="w-4 h-4" />
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleDelete(extra.id);
+                                setOpenMenuId(null);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Card Layout */}
+          <div className="md:hidden divide-y divide-gray-100">
+            {extras.map((extra) => (
+              <div key={extra.id} className="p-4">
+                <div className="flex gap-4 mb-3">
+                  <div className="flex-shrink-0">
+                    {extra.cover_image ? (
+                      <div className="w-24 h-18 rounded-xl overflow-hidden border-2 border-gray-200 shadow-sm">
+                        <img
+                          src={getImageUrl(extra.cover_image) || ''}
+                          alt={extra.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="96" height="72"%3E%3Crect fill="%23e5e7eb" width="96" height="72"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="10" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3ENo Image%3C/text%3E%3C/svg%3E';
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-24 h-18 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl border-2 border-gray-200 flex items-center justify-center">
+                        <ImageIcon className="w-8 h-8 text-gray-400" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Gift className="w-4 h-4 text-gray-400" />
+                        <h3 className="font-bold text-gray-900 text-lg">{extra.name}</h3>
+                      </div>
+                      {extra.is_active ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full text-xs font-semibold">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Active
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 border border-red-200 rounded-full text-xs font-semibold">
+                          <XCircle className="w-3 h-3" />
+                          Inactive
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">{extra.description || 'N/A'}</p>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Euro className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="font-bold text-gray-900">{formatCurrency(Number(extra.price))}</span>
+                        <Tag className="w-3.5 h-3.5 text-gray-400 ml-2" />
+                        <span className="text-gray-600 capitalize">{extra.price_type.replace('_', ' ')}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="text-gray-600">{formatDate(extra.created_at)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end mt-3">
+                  <div className="relative" ref={(el) => (menuRefs.current[`mobile-${extra.id}`] = el)}>
+                    <button
+                      onClick={() => setOpenMenuId(openMenuId === `mobile-${extra.id}` ? null : `mobile-${extra.id}`)}
+                      className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <MoreVertical className="w-5 h-5" />
+                    </button>
+                    {openMenuId === `mobile-${extra.id}` && (
+                      <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1">
+                        <button
+                          onClick={() => {
+                            handleEdit(extra);
+                            setOpenMenuId(null);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                        >
+                          <Edit className="w-4 h-4" />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleDelete(extra.id);
+                            setOpenMenuId(null);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Extra Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4">
           <div
-            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
             onClick={closeModal}
           ></div>
-          <div className="flex min-h-full items-center justify-center p-4">
+          <div className="flex min-h-full items-center justify-center">
             <div
-              className="relative bg-white rounded-lg shadow-xl max-w-md w-full overflow-hidden"
+              className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-gray-200 overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h2 className="text-2xl font-semibold">
-                  {editingExtra ? 'Edit Extra' : 'Add New Extra'}
-                </h2>
-                <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
+              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-2xl font-bold text-gray-900">
+                    {editingExtra ? 'Edit Extra' : 'Add New Extra'}
+                  </h2>
+                </div>
+                <button 
+                  onClick={closeModal} 
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <form onSubmit={handleSubmit} className="p-6 space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Name *</label>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
                     required
+                    placeholder="e.g., GPS Navigation"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
                   <textarea
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all resize-none"
                     rows={3}
+                    placeholder="Enter extra description..."
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Cover Photo <span className="text-gray-500 text-xs">(Displayed on booking page)</span>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Cover Photo <span className="text-gray-500 text-xs font-normal">(Displayed on booking page)</span>
                   </label>
-                  <div className="flex gap-4">
-                    <input
-                      key={coverImageKey}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleCoverImageUpload}
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                      disabled={uploadingCoverImage}
-                    />
-                    {uploadingCoverImage && (
-                      <span className="text-sm text-gray-500 self-center">Uploading...</span>
-                    )}
-                  </div>
-                  {formData.cover_image && (
-                    <div className="mt-2">
-                      <Image
-                        src={getImageUrl(formData.cover_image) || ''}
-                        alt="Cover"
-                        width={200}
-                        height={150}
-                        className="max-w-xs h-32 object-cover rounded-lg"
-                        unoptimized
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <input
+                        key={coverImageKey}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleCoverImageUpload}
+                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-gradient-to-r file:from-blue-600 file:to-blue-500 file:text-white hover:file:from-blue-700 hover:file:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
+                        disabled={uploadingCoverImage}
                       />
                     </div>
-                  )}
+                    {uploadingCoverImage && (
+                      <div className="flex items-center gap-2 text-sm text-blue-600">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                        Uploading...
+                      </div>
+                    )}
+                    {formData.cover_image && (
+                      <div className="mt-3">
+                        <div className="relative w-48 h-36 rounded-xl overflow-hidden border-2 border-gray-200 shadow-sm">
+                          <img
+                            src={getImageUrl(formData.cover_image) || ''}
+                            alt="Cover"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="150"%3E%3Crect fill="%23e5e7eb" width="200" height="150"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="14" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EInvalid Image%3C/text%3E%3C/svg%3E';
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Price (€) *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={formData.price}
-                      onChange={(e) =>
-                        setFormData({ ...formData, price: parseFloat(e.target.value) })
-                      }
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                      required
-                    />
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Price (€) *</label>
+                    <div className="relative">
+                      <Euro className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={formData.price}
+                        onChange={(e) =>
+                          setFormData({ ...formData, price: parseFloat(e.target.value) })
+                        }
+                        className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
+                        required
+                      />
+                    </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
                       Price Type *
                     </label>
-                    <select
-                      value={formData.price_type}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          price_type: e.target.value as 'per_rental' | 'per_day' | 'per_week',
-                        })
-                      }
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                      required
-                    >
-                      <option value="per_rental">Per Rental</option>
-                      <option value="per_day">Per Day</option>
-                      <option value="per_week">Per Week</option>
-                    </select>
+                    <div className="relative">
+                      <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <select
+                        value={formData.price_type}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            price_type: e.target.value as 'per_rental' | 'per_day' | 'per_week',
+                          })
+                        }
+                        className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all bg-white appearance-none"
+                        required
+                      >
+                        <option value="per_rental">Per Rental</option>
+                        <option value="per_day">Per Day</option>
+                        <option value="per_week">Per Week</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
                 <div>
-                  <label className="flex items-center space-x-2">
+                  <label className="flex items-center space-x-3 cursor-pointer group">
                     <input
                       type="checkbox"
                       checked={formData.is_active}
                       onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                      className="w-4 h-4 text-gray-900 border-gray-300 rounded focus:ring-gray-900"
+                      className="w-5 h-5 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
                     />
-                    <span className="text-sm text-gray-700">Active</span>
+                    <span className="text-sm font-medium text-gray-700">Active</span>
                   </label>
                 </div>
 
                 <div className="flex gap-4 pt-4 border-t border-gray-200">
                   <button
                     type="submit"
-                    className="flex-1 bg-gray-900 text-white px-6 py-2 rounded-lg hover:bg-gray-800 transition-colors"
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl hover:from-blue-700 hover:to-blue-600 transition-all font-semibold flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
                   >
+                    <Save className="w-5 h-5" />
                     {editingExtra ? 'Update' : 'Create'} Extra
                   </button>
                   <button
                     type="button"
                     onClick={closeModal}
-                    className="flex-1 bg-gray-200 text-gray-900 px-6 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+                    className="flex-1 px-6 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
                   >
+                    <X className="w-5 h-5" />
                     Cancel
                   </button>
                 </div>
@@ -299,117 +617,6 @@ export default function AdminExtrasPage() {
           </div>
         </div>
       )}
-
-      {/* Extras List */}
-      {loading ? (
-        <p>Loading extras...</p>
-      ) : (
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Cover Photo
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Description
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Price
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Price Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Created
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {extras.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
-                    No extras found. Click "Add Extra" to create one.
-                  </td>
-                </tr>
-              ) : (
-                extras.map((extra) => (
-                  <tr key={extra.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {extra.cover_image ? (
-                        <Image
-                          src={getImageUrl(extra.cover_image) || ''}
-                          alt={extra.name}
-                          width={80}
-                          height={60}
-                          className="w-20 h-15 object-cover rounded"
-                          unoptimized
-                        />
-                      ) : (
-                        <div className="w-20 h-15 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-400">
-                          No image
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{extra.name}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-500 max-w-xs truncate">
-                        {extra.description || 'N/A'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      €{Number(extra.price).toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm capitalize">
-                      {extra.price_type.replace('_', ' ')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          extra.is_active
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {extra.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(extra.created_at)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <button
-                        onClick={() => handleEdit(extra)}
-                        className="text-blue-600 hover:text-blue-900 mr-4"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(extra.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </AdminLayout>
+    </>
   );
 }
-

@@ -215,11 +215,12 @@ function BookingConfirmationContent() {
                     <p className="text-gray-600">Pick-up Date</p>
                     <p className="font-medium text-gray-900">
                       {new Date(booking.pickup_date).toLocaleDateString('en-GB', {
-                        year: 'numeric',
-                        month: 'short',
                         day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric'
+                      })} {new Date(booking.pickup_date).toLocaleTimeString('en-GB', {
                         hour: '2-digit',
-                        minute: '2-digit',
+                        minute: '2-digit'
                       })}
                     </p>
                   </div>
@@ -227,11 +228,12 @@ function BookingConfirmationContent() {
                     <p className="text-gray-600">Drop-off Date</p>
                     <p className="font-medium text-gray-900">
                       {new Date(booking.dropoff_date).toLocaleDateString('en-GB', {
-                        year: 'numeric',
-                        month: 'short',
                         day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric'
+                      })} {new Date(booking.dropoff_date).toLocaleTimeString('en-GB', {
                         hour: '2-digit',
-                        minute: '2-digit',
+                        minute: '2-digit'
                       })}
                     </p>
                   </div>

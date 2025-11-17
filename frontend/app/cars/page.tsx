@@ -61,12 +61,13 @@ function CarsPageContent() {
     const toParam = searchParams.get('available_to');
     
     if (locationParam || fromParam || toParam) {
-      setFilters({
+      setFilters((prev) => ({
+        ...prev,
         category: '',
         location: locationParam || '',
         available_from: fromParam || '',
         available_to: toParam || '',
-      });
+      }));
     }
   }, [searchParams]);
 
@@ -198,7 +199,16 @@ function CarsPageContent() {
   const getActiveFilterLabel = (key: string, value: string) => {
     switch (key) {
       case 'category':
-        return value === 'luxury' ? 'Luxury' : value === 'super_luxury' ? 'Super Luxury' : 'Exotic';
+        const categoryLabels: { [key: string]: string } = {
+          'luxury_sedans': 'Luxury Sedans',
+          'luxury-sedans': 'Luxury Sedans',
+          'economic': 'Economic',
+          'sportscars': 'Sportscars',
+          'sports-cars': 'Sportscars',
+          'supercars': 'Supercars',
+          'suvs': 'SUVs'
+        };
+        return categoryLabels[value] || value;
       case 'make':
         return value;
       case 'location':
@@ -219,9 +229,17 @@ function CarsPageContent() {
       case 'max_price':
         return `Max: €${value}/day`;
       case 'available_from':
-        return `From: ${new Date(value).toLocaleDateString()}`;
+        return `From: ${new Date(value).toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        })}`;
       case 'available_to':
-        return `To: ${new Date(value).toLocaleDateString()}`;
+        return `To: ${new Date(value).toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        })}`;
       default:
         return value;
     }
@@ -360,9 +378,11 @@ function CarsPageContent() {
                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                           >
                             <option value="">All Categories</option>
-                            <option value="luxury">Luxury</option>
-                            <option value="super_luxury">Super Luxury</option>
-                            <option value="exotic">Exotic</option>
+                            <option value="luxury_sedans">Luxury Sedans</option>
+                            <option value="economic">Economic</option>
+                            <option value="sportscars">Sportscars</option>
+                            <option value="supercars">Supercars</option>
+                            <option value="suvs">SUVs</option>
                           </select>
                         </div>
 
@@ -495,34 +515,54 @@ function CarsPageContent() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-gray-700">Quick filters:</span>
               <button
-                onClick={() => handleFilterChange('category', filters.category === 'luxury' ? '' : 'luxury')}
+                onClick={() => handleFilterChange('category', filters.category === 'luxury_sedans' ? '' : 'luxury_sedans')}
                 className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  filters.category === 'luxury'
+                  filters.category === 'luxury_sedans'
                     ? 'bg-gray-900 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                Luxury
+                Luxury Sedans
               </button>
               <button
-                onClick={() => handleFilterChange('category', filters.category === 'super_luxury' ? '' : 'super_luxury')}
+                onClick={() => handleFilterChange('category', filters.category === 'economic' ? '' : 'economic')}
                 className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  filters.category === 'super_luxury'
+                  filters.category === 'economic'
                     ? 'bg-gray-900 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                Super Luxury
+                Economic
               </button>
               <button
-                onClick={() => handleFilterChange('category', filters.category === 'exotic' ? '' : 'exotic')}
+                onClick={() => handleFilterChange('category', filters.category === 'sportscars' ? '' : 'sportscars')}
                 className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  filters.category === 'exotic'
+                  filters.category === 'sportscars'
                     ? 'bg-gray-900 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                Exotic
+                Sportscars
+              </button>
+              <button
+                onClick={() => handleFilterChange('category', filters.category === 'supercars' ? '' : 'supercars')}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  filters.category === 'supercars'
+                    ? 'bg-gray-900 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Supercars
+              </button>
+              <button
+                onClick={() => handleFilterChange('category', filters.category === 'suvs' ? '' : 'suvs')}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  filters.category === 'suvs'
+                    ? 'bg-gray-900 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                SUVs
               </button>
               {activeFiltersCount > 0 && (
                 <button

@@ -31,23 +31,46 @@ export default function AdminLoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Ensure component is mounted before rendering
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Set body styles when component mounts
   useEffect(() => {
-    document.body.style.margin = '0';
-    document.body.style.padding = '0';
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.margin = '0';
-    document.documentElement.style.padding = '0';
-    document.documentElement.style.overflow = 'hidden';
+    const body = document.body;
+    const html = document.documentElement;
+    
+    // Store original styles
+    const originalBodyMargin = body.style.margin;
+    const originalBodyPadding = body.style.padding;
+    const originalBodyOverflow = body.style.overflow;
+    const originalHtmlMargin = html.style.margin;
+    const originalHtmlPadding = html.style.padding;
+    const originalHtmlOverflow = html.style.overflow;
+    
+    // Apply new styles
+    body.style.margin = '0';
+    body.style.padding = '0';
+    body.style.overflow = 'hidden';
+    body.style.height = '100vh';
+    html.style.margin = '0';
+    html.style.padding = '0';
+    html.style.overflow = 'hidden';
+    html.style.height = '100%';
     
     return () => {
-      document.body.style.margin = '';
-      document.body.style.padding = '';
-      document.body.style.overflow = '';
-      document.documentElement.style.margin = '';
-      document.documentElement.style.padding = '';
-      document.documentElement.style.overflow = '';
+      // Restore original styles
+      body.style.margin = originalBodyMargin;
+      body.style.padding = originalBodyPadding;
+      body.style.overflow = originalBodyOverflow;
+      body.style.height = '';
+      html.style.margin = originalHtmlMargin;
+      html.style.padding = originalHtmlPadding;
+      html.style.overflow = originalHtmlOverflow;
+      html.style.height = '';
     };
   }, []);
 
@@ -79,21 +102,48 @@ export default function AdminLoginPage() {
   };
 
   // Hero image - luxury car
-  const heroImageSrc = 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1200&h=1600&fit=crop';
+  const heroImageSrc = '/herocars.jpg';
+
+  // Don't render until mounted to avoid hydration issues
+  if (!mounted) {
+    return (
+      <div className="admin-login-page fixed inset-0 bg-black flex items-center justify-center z-[9999]">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="fixed inset-0 h-screen w-screen font-sans overflow-hidden relative">
+    <div 
+      className="admin-login-page fixed inset-0 h-screen w-screen font-sans overflow-hidden relative z-50 bg-black"
+      style={{ 
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100vw',
+        height: '100vh',
+        minHeight: '100vh',
+        minWidth: '100vw',
+      }}
+    >
       {/* Background Image - Full Page */}
       <div
-        className="fixed inset-0 bg-cover bg-center bg-no-repeat"
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat z-0"
         style={{ 
           backgroundImage: `url(${heroImageSrc})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          minHeight: '100vh',
-          minWidth: '100vw'
+          width: '100%',
+          height: '100%',
+          minWidth: '100%',
+          minHeight: '100%',
         }}
-      ></div>
+      >
+        {/* Dark overlay for better text readability */}
+        <div className="absolute inset-0 bg-black/40 z-10"></div>
+      </div>
 
       {/* Company Logo - Top Center */}
       <div className="absolute top-12 left-1/2 -translate-x-1/2 z-50">
@@ -104,11 +154,12 @@ export default function AdminLoginPage() {
           height={90}
           className="h-auto"
           unoptimized
+          priority
         />
       </div>
 
       {/* Left column: sign-in form with transparent overlay */}
-      <section className="absolute inset-0 flex items-center justify-center p-8 z-10">
+      <section className="absolute inset-0 flex items-center justify-center p-8 z-20">
         <div className="w-full max-w-md">
           {/* Semi-transparent black overlay for form area */}
           <div className="bg-black/75 backdrop-blur-sm rounded-2xl p-8">

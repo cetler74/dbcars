@@ -11,6 +11,7 @@ import authRoutes from './routes/auth';
 import uploadRoutes from './routes/upload';
 import blogRoutes from './routes/blog';
 import couponsRoutes from './routes/coupons';
+import draftsRoutes from './routes/drafts';
 
 dotenv.config();
 
@@ -32,6 +33,8 @@ app.use('/api/locations', locationsRoutes);
 app.use('/api/extras', extrasRoutes);
 app.use('/api/coupons', couponsRoutes);
 app.use('/api/auth', authRoutes);
+// Register more specific admin routes first
+app.use('/api/admin/drafts', draftsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/blog', blogRoutes);

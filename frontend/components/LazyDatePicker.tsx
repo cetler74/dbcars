@@ -5,7 +5,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 
 // Lazy load DatePicker to reduce initial bundle size
 const DatePicker = dynamic(
-  () => import('react-datepicker').then((mod) => mod.default),
+  () => import('react-datepicker').then((mod) => mod.default as any),
   {
     ssr: false,
     loading: () => (
@@ -14,7 +14,7 @@ const DatePicker = dynamic(
       </div>
     ),
   }
-);
+) as any;
 
 export default DatePicker;
 

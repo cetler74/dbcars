@@ -11,6 +11,7 @@ import {
   checkAvailability,
   validateCoupon,
   createBooking,
+  getVehicleBlockedDates,
 } from '@/lib/api';
 
 interface BookingFormProps {
@@ -62,6 +63,9 @@ export default function BookingForm({
   const [couponCode, setCouponCode] = useState('');
   const [coupon, setCoupon] = useState<any>(null);
   const [couponError, setCouponError] = useState('');
+  
+  // Blocked dates state
+  const [blockedDatesData, setBlockedDatesData] = useState<any>(null);
 
   const [formData, setFormData] = useState({
     pickup_location_id: initialPickupLocation,
@@ -88,6 +92,13 @@ export default function BookingForm({
   }, []);
 
   useEffect(() => {
+    if (vehicle?.id) {
+      loadBlockedDates();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicle?.id]);
+
+  useEffect(() => {
     console.log('Step changed to:', step);
   }, [step]);
 
@@ -96,7 +107,7 @@ export default function BookingForm({
       checkVehicleAvailability();
       calculatePricing();
     }
-  }, [formData.pickup_date, formData.dropoff_date, formData.selected_extras]);
+  }, [formData.pickup_date, formData.dropoff_date, formData.selected_extras, coupon]);
 
   const loadInitialData = async () => {
     try {
@@ -109,6 +120,45 @@ export default function BookingForm({
     } catch (error) {
       console.error('Error loading data:', error);
     }
+  };
+
+  const loadBlockedDates = async () => {
+    try {
+      // Load blocked dates for the next 12 months
+      const data = await getVehicleBlockedDates(vehicle.id);
+      setBlockedDatesData(data);
+      console.log('Loaded blocked dates:', data);
+    } catch (error) {
+      console.error('Error loading blocked dates:', error);
+    }
+  };
+
+  // Helper function to check if a date is available
+  const isDateAvailable = (date: Date): boolean => {
+    if (!blockedDatesData) return true;
+    
+    const dateStr = date.toISOString().split('T')[0];
+    
+    // Check blocked dates (maintenance/blocked notes)
+    if (blockedDatesData.blocked_dates) {
+      const isBlocked = blockedDatesData.blocked_dates.some((note: any) => {
+        const noteDate = new Date(note.note_date).toISOString().split('T')[0];
+        return dateStr === noteDate;
+      });
+      if (isBlocked) return false;
+    }
+    
+    // Check if date falls within any booking
+    if (blockedDatesData.bookings) {
+      const isBooked = blockedDatesData.bookings.some((booking: any) => {
+        const pickupDate = new Date(booking.pickup_date).toISOString().split('T')[0];
+        const dropoffDate = new Date(booking.dropoff_date).toISOString().split('T')[0];
+        return dateStr >= pickupDate && dateStr <= dropoffDate;
+      });
+      if (isBooked) return false;
+    }
+    
+    return true;
   };
 
   const checkVehicleAvailability = async () => {
@@ -137,11 +187,11 @@ export default function BookingForm({
       );
 
       let basePrice = vehicle.base_price_daily * days;
-      if (days >= 30 && vehicle.base_price_monthly) {
+      if (days >= 30 && vehicle.base_price_monthly && vehicle.base_price_monthly > 0) {
         const months = Math.floor(days / 30);
         const remainingDays = days % 30;
         basePrice = vehicle.base_price_monthly * months + vehicle.base_price_daily * remainingDays;
-      } else if (days >= 7 && vehicle.base_price_weekly) {
+      } else if (days >= 7 && vehicle.base_price_weekly && vehicle.base_price_weekly > 0) {
         const weeks = Math.floor(days / 7);
         const remainingDays = days % 7;
         basePrice = vehicle.base_price_weekly * weeks + vehicle.base_price_daily * remainingDays;
@@ -195,7 +245,7 @@ export default function BookingForm({
         pricing?.days
       );
       setCoupon(couponData);
-      calculatePricing(); // Recalculate with coupon
+      // Price will be recalculated automatically by useEffect when coupon changes
     } catch (error: any) {
       setCouponError(error.response?.data?.error || 'Invalid coupon code');
       setCoupon(null);
@@ -384,6 +434,7 @@ export default function BookingForm({
                   setFormData((prev) => ({ ...prev, pickup_date: date }))
                 }
                 minDate={new Date()}
+                filterDate={isDateAvailable}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900"
                 dateFormat="yyyy-MM-dd"
                 required
@@ -400,6 +451,7 @@ export default function BookingForm({
                   setFormData((prev) => ({ ...prev, dropoff_date: date }))
                 }
                 minDate={formData.pickup_date || new Date()}
+                filterDate={isDateAvailable}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900"
                 dateFormat="yyyy-MM-dd"
                 required

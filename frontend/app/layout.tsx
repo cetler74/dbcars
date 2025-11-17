@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { Suspense } from "react";
 import "./globals.css";
 import Header from "@/components/Header";
 import ConditionalFooter from "@/components/ConditionalFooter";
@@ -22,8 +23,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} antialiased`} style={{ margin: 0, padding: 0 }}>
-        <Header />
-        <main className="min-h-screen" style={{ margin: 0 }}>{children}</main>
+        <Suspense fallback={<div className="h-20 bg-white" />}>
+          <Header />
+        </Suspense>
+        <main className="min-h-screen" style={{ margin: 0, position: 'relative' }}>{children}</main>
         <ConditionalFooter />
       </body>
     </html>

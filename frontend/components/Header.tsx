@@ -60,11 +60,19 @@ export default function Header() {
       try {
         // Save to localStorage for persistence across pages
         if (pickupLocation || pickupDate || dropoffDate) {
+          // Read existing data to preserve dropoff_location_id and showReturnLocation
+          const existingData = localStorage.getItem('carSearchData');
+          const existing = existingData ? JSON.parse(existingData) : {};
+          
+          // Merge with new data, preserving fields not managed by header
           const searchData = {
+            ...existing, // Preserve all existing fields including dropoff_location_id and showReturnLocation
             pickup_location_id: pickupLocation,
             pickup_date: pickupDate ? pickupDate.toISOString() : null,
             dropoff_date: dropoffDate ? dropoffDate.toISOString() : null,
+            savedAt: new Date().toISOString(),
           };
+          
           localStorage.setItem('carSearchData', JSON.stringify(searchData));
         }
         
@@ -183,8 +191,12 @@ export default function Header() {
                   selected={pickupDate}
                   onChange={(date: Date | null) => setPickupDate(date)}
                   minDate={new Date()}
-                  placeholderText="Pickup Date"
-                  dateFormat="dd/MM/yyyy"
+                  showTimeSelect
+                  timeFormat="HH:mm"
+                  timeIntervals={30}
+                  timeCaption="Time"
+                  placeholderText="Pickup Date & Time"
+                  dateFormat="dd/MM/yyyy HH:mm"
                   className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   wrapperClassName="w-full"
                 />
@@ -196,8 +208,12 @@ export default function Header() {
                   selected={dropoffDate}
                   onChange={(date: Date | null) => setDropoffDate(date)}
                   minDate={pickupDate || new Date()}
-                  placeholderText="Dropoff Date"
-                  dateFormat="dd/MM/yyyy"
+                  showTimeSelect
+                  timeFormat="HH:mm"
+                  timeIntervals={30}
+                  timeCaption="Time"
+                  placeholderText="Dropoff Date & Time"
+                  dateFormat="dd/MM/yyyy HH:mm"
                   className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   wrapperClassName="w-full"
                 />
@@ -314,8 +330,12 @@ export default function Header() {
                   selected={pickupDate}
                   onChange={(date: Date | null) => setPickupDate(date)}
                   minDate={new Date()}
-                  placeholderText="Pickup Date"
-                  dateFormat="dd/MM/yyyy"
+                  showTimeSelect
+                  timeFormat="HH:mm"
+                  timeIntervals={30}
+                  timeCaption="Time"
+                  placeholderText="Pickup Date & Time"
+                  dateFormat="dd/MM/yyyy HH:mm"
                   className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   wrapperClassName="w-full"
                 />
@@ -325,8 +345,12 @@ export default function Header() {
                   selected={dropoffDate}
                   onChange={(date: Date | null) => setDropoffDate(date)}
                   minDate={pickupDate || new Date()}
-                  placeholderText="Dropoff Date"
-                  dateFormat="dd/MM/yyyy"
+                  showTimeSelect
+                  timeFormat="HH:mm"
+                  timeIntervals={30}
+                  timeCaption="Time"
+                  placeholderText="Dropoff Date & Time"
+                  dateFormat="dd/MM/yyyy HH:mm"
                   className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   wrapperClassName="w-full"
                 />

@@ -31,24 +31,32 @@ export default function VehicleCard({ vehicle, searchParams, priority = false }:
   const [imageError, setImageError] = useState(false);
   const getCategoryLabel = (category: string) => {
     switch (category) {
-      case 'luxury':
-        return 'Luxury';
-      case 'super_luxury':
-        return 'Super Luxury';
-      case 'exotic':
-        return 'Exotic';
+      case 'luxury_sedans':
+        return 'Luxury Sedans';
+      case 'economic':
+        return 'Economic';
+      case 'sportscars':
+        return 'Sportscars';
+      case 'supercars':
+        return 'Supercars';
+      case 'suvs':
+        return 'SUVs';
       default:
-        return category.charAt(0).toUpperCase() + category.slice(1);
+        return category.charAt(0).toUpperCase() + category.slice(1).replace(/_/g, ' ');
     }
   };
 
   const getCategoryColor = (category: string) => {
     switch (category) {
-      case 'luxury':
+      case 'luxury_sedans':
         return 'bg-blue-100 text-blue-800';
-      case 'super_luxury':
+      case 'economic':
+        return 'bg-green-100 text-green-800';
+      case 'sportscars':
+        return 'bg-red-100 text-red-800';
+      case 'supercars':
         return 'bg-purple-100 text-purple-800';
-      case 'exotic':
+      case 'suvs':
         return 'bg-orange-100 text-orange-800';
       default:
         return 'bg-gray-100 text-gray-800';
