@@ -686,8 +686,33 @@ router.put('/bookings/:id', async (req: Request, res: Response) => {
         has_discount_amount: fullBooking.discount_amount !== undefined,
       });
       
+      // Convert numeric fields to numbers (PostgreSQL returns them as strings)
+      const emailBookingData = {
+        booking_number: fullBooking.booking_number,
+        pickup_date: fullBooking.pickup_date,
+        dropoff_date: fullBooking.dropoff_date,
+        total_price: Number(fullBooking.total_price),
+        base_price: Number(fullBooking.base_price),
+        extras_price: Number(fullBooking.extras_price),
+        discount_amount: Number(fullBooking.discount_amount || 0),
+        first_name: fullBooking.first_name,
+        last_name: fullBooking.last_name,
+        email: fullBooking.email,
+        phone: fullBooking.phone,
+        make: fullBooking.make,
+        model: fullBooking.model,
+        year: fullBooking.year,
+        pickup_location_name: fullBooking.pickup_location_name,
+        dropoff_location_name: fullBooking.dropoff_location_name,
+        status: fullBooking.status,
+        payment_link: fullBooking.payment_link,
+        notes: fullBooking.notes,
+        pickup_location_city: fullBooking.pickup_location_city,
+        dropoff_location_city: fullBooking.dropoff_location_city,
+      };
+      
       // Always send email when payment link is added, regardless of status
-      sendBookingStatusEmail(fullBooking)
+      sendBookingStatusEmail(emailBookingData)
         .then(() => {
           console.log('[Admin] Booking status email sent successfully for:', fullBooking.booking_number);
         })
