@@ -801,18 +801,21 @@ export default function AdminBookingsPage() {
                             completed: 'Completed'
                           };
                           
+                          const statusIndex = ['pending', 'waiting_payment', 'confirmed', 'completed'].indexOf(bookingDetails.status);
                           const isActive = bookingDetails.status === step;
-                          const isPast = ['pending', 'waiting_payment', 'confirmed', 'completed'].indexOf(bookingDetails.status) > index;
-                          const isCompleted = step === 'completed' && bookingDetails.status === 'completed';
+                          // A step is past if the current status index is greater than this step's index
+                          // A step is completed if it's the current step or past
+                          const isPast = statusIndex > index;
+                          const isCompleted = statusIndex >= index; // Include current step as completed
                           
                           return (
                             <div key={step} className="flex flex-col items-center relative z-0">
                               <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 shadow-md ${
-                                isCompleted || isPast ? 'bg-gradient-to-r from-emerald-600 to-green-500 border-emerald-600' :
+                                isCompleted ? 'bg-gradient-to-r from-emerald-600 to-green-500 border-emerald-600' :
                                 isActive ? 'bg-gradient-to-r from-blue-600 to-blue-500 border-blue-600' :
                                 'bg-white border-gray-300'
                               }`}>
-                                {isCompleted || isPast ? (
+                                {isCompleted ? (
                                   <CheckCircle2 className="w-5 h-5 text-white" />
                                 ) : (
                                   <span className={`text-sm font-bold ${isActive ? 'text-white' : 'text-gray-400'}`}>
@@ -820,7 +823,7 @@ export default function AdminBookingsPage() {
                                   </span>
                                 )}
                               </div>
-                              <span className={`mt-2 text-xs font-semibold ${isCompleted || isPast ? 'text-emerald-600' : isActive ? 'text-blue-600' : 'text-gray-500'}`}>
+                              <span className={`mt-2 text-xs font-semibold ${isCompleted ? 'text-emerald-600' : isActive ? 'text-blue-600' : 'text-gray-500'}`}>
                                 {stepLabels[step as keyof typeof stepLabels]}
                               </span>
                             </div>

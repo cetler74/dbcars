@@ -213,16 +213,6 @@ export default function BookingDetailPage() {
               )}
               {booking.status === 'confirmed' && (
                 <button
-                  onClick={() => handleStatusUpdate('active')}
-                  disabled={updating}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  Mark as Active
-                </button>
-              )}
-              {booking.status === 'active' && (
-                <button
                   onClick={() => handleStatusUpdate('completed')}
                   disabled={updating}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
@@ -231,7 +221,7 @@ export default function BookingDetailPage() {
                   Mark as Completed
                 </button>
               )}
-              {(booking.status === 'pending' || booking.status === 'confirmed' || booking.status === 'active') && (
+              {(booking.status === 'pending' || booking.status === 'confirmed' || booking.status === 'waiting_payment') && (
                 <button
                   onClick={() => handleStatusUpdate('cancelled')}
                   disabled={updating}

@@ -576,6 +576,15 @@ router.put('/bookings/:id', async (req: Request, res: Response) => {
       currentBooking.payment_link || null
     );
     if (validationError) {
+      console.error('[Admin] Booking status validation failed:', {
+        bookingId: id,
+        currentStatus: currentBooking.status,
+        newStatus,
+        hasNotes: notes !== undefined && notes !== null,
+        hasPaymentLinkInRequest: payment_link !== undefined && payment_link !== null,
+        hasExistingPaymentLink: !!currentBooking.payment_link,
+        error: validationError
+      });
       return res.status(400).json({ error: validationError });
     }
 
