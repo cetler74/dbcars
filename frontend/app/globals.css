@@ -18,10 +18,21 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: auto;
+  min-height: 100%;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: auto;
+  min-height: 100%;
 }
 
 /* Smooth scrolling animation for car logos */
@@ -43,6 +54,42 @@ body {
 
 .animate-scroll:hover {
   animation-play-state: paused;
+}
+
+/* Smooth scrolling animation for vehicles carousel */
+@keyframes scroll-vehicles {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-scroll-vehicles {
+  animation: scroll-vehicles 60s linear infinite;
+  display: flex;
+  width: fit-content;
+  will-change: transform;
+}
+
+.animate-scroll-vehicles:hover {
+  animation-play-state: paused;
+}
+
+/* Smooth scrolling animation for reviews carousel */
+@keyframes scroll-reviews {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-scroll-reviews {
+  animation: scroll-reviews linear infinite;
+  will-change: transform;
 }
 
 /* Force header transparency on home page */
@@ -84,98 +131,42 @@ header.header-transparent {
   color: white;
 }
 
-/* DatePicker calendar header styling - Orange background with white text */
-.react-datepicker {
-  border-radius: 0.5rem !important;
-  overflow: hidden !important;
-  border: none !important;
+/* DatePicker font size adjustments */
+.react-datepicker__current-month {
+  font-size: 0.875rem !important;
 }
 
+.react-datepicker__header--time,
+.react-datepicker-time__header,
+.react-datepicker__time-caption {
+  font-size: 0.875rem !important;
+}
+
+/* DatePicker header - Orange background */
 .react-datepicker__header {
-  background-color: #f97316 !important; /* orange-500 */
+  background-color: #f97316 !important;
+  border: none !important;
   border-bottom: none !important;
-  padding-top: 0.75rem !important;
-  padding-left: 0.5rem !important;
-  padding-right: 0.5rem !important;
-  margin: 0 !important;
-  margin-top: 0 !important;
-  border-radius: 0 !important;
-  border-top-left-radius: 0.5rem !important;
-  border-top-right-radius: 0.5rem !important;
-  position: relative !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
 }
 
 .react-datepicker__header * {
   color: white !important;
 }
 
-.react-datepicker__current-month {
-  color: white !important;
-  font-weight: 600 !important;
-  font-size: 0.944rem !important;
-  line-height: 1.5 !important;
-}
-
-.react-datepicker__day-names {
-  background-color: transparent !important;
-}
-
+.react-datepicker__current-month,
 .react-datepicker__day-name {
   color: white !important;
-  font-weight: 600 !important;
 }
 
-.react-datepicker__navigation {
-  top: 0.75rem !important;
-  height: auto !important;
-  width: 1.5rem !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  margin-top: 0 !important;
-  line-height: 1.5 !important;
+/* Remove outline and border from DatePicker */
+.react-datepicker {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
 }
 
-.react-datepicker__navigation--previous {
-  left: 0.5rem !important;
-}
-
-.react-datepicker__navigation--next {
-  right: 0.5rem !important;
-}
-
-.react-datepicker__navigation-icon {
-  top: 0 !important;
-  margin-top: 0 !important;
-  line-height: 1.5 !important;
-}
-
-.react-datepicker__navigation-icon::before {
-  border-color: white !important;
-}
-
-.react-datepicker__navigation:hover *::before {
-  border-color: white !important;
-}
-
-.react-datepicker__year-read-view--down-arrow,
-.react-datepicker__month-read-view--down-arrow,
-.react-datepicker__month-year-read-view--down-arrow {
-  border-top-color: white !important;
-}
-
-.react-datepicker__year-dropdown,
-.react-datepicker__month-dropdown {
-  background-color: #f97316 !important;
-  color: white !important;
-}
-
-/* Fix for react-datepicker className.split error */
-.react-datepicker-popper * {
-  /* Ensure all elements have className as string */
+.react-datepicker__triangle {
+  display: none !important;
 }
 
 /* Blog content overflow prevention */
@@ -237,6 +228,27 @@ header.header-transparent {
 
 .scrollbar-hide-y::-webkit-scrollbar {
   display: none;  /* Chrome, Safari and Opera */
+}
+
+/* Remove selection outlines in rich text editor */
+.ProseMirror {
+  outline: none !important;
+}
+
+.ProseMirror:focus {
+  outline: none !important;
+}
+
+.ProseMirror-selectednode {
+  outline: none !important;
+}
+
+.ProseMirror * {
+  outline: none !important;
+}
+
+.ProseMirror *:focus {
+  outline: none !important;
 }
 
 /* Ensure horizontal scrolling works */

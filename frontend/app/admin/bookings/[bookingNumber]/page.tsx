@@ -33,6 +33,8 @@ export default function BookingDetailPage() {
   const [booking, setBooking] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentLink, setPaymentLink] = useState('');
 
   const getImageUrl = useMemo(
     () => (url: string | null) => {
@@ -72,20 +74,40 @@ export default function BookingDetailPage() {
     }
   };
 
-  const handleStatusUpdate = async (newStatus: string) => {
+  const handleStatusUpdate = async (newStatus: string, paymentLinkValue?: string) => {
     if (!booking) return;
     
     try {
       setUpdating(true);
-      await updateBookingStatus(booking.id, newStatus);
+      await updateBookingStatus(booking.id, newStatus, undefined, paymentLinkValue);
       toast.success('Booking status updated successfully');
       await loadBooking();
+      if (paymentLinkValue) {
+        toast.success('Payment link sent to customer via email');
+      }
     } catch (error: any) {
       console.error('Error updating booking status:', error);
       toast.error(error.response?.data?.error || 'Failed to update booking status');
     } finally {
       setUpdating(false);
     }
+  };
+
+  const handleConfirmBooking = () => {
+    setPaymentLink('');
+    setShowPaymentModal(true);
+  };
+
+  const handlePaymentSubmit = () => {
+    if (!paymentLink.trim()) {
+      toast.error('Please enter a payment link');
+      return;
+    }
+    // Set status to 'waiting_payment' when payment link is provided
+    // This indicates the booking is approved but payment is pending
+    handleStatusUpdate('waiting_payment', paymentLink);
+    setShowPaymentModal(false);
+    setPaymentLink('');
   };
 
   const formatCurrency = (amount: number) => {
@@ -109,7 +131,7 @@ export default function BookingDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" text="Loading booking details..." />
       </div>
     );
@@ -117,7 +139,7 @@ export default function BookingDetailPage() {
 
   if (!booking) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Booking Not Found</h1>
@@ -145,7 +167,7 @@ export default function BookingDetailPage() {
   const bookingExtras = booking.booking_extras || [];
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6">
+    <div className="min-h-screen py-6">
       <div className="container mx-auto px-4 max-w-7xl">
         {/* Header */}
         <div className="mb-6">
@@ -171,12 +193,22 @@ export default function BookingDetailPage() {
             <div className="flex items-center gap-2">
               {booking.status === 'pending' && (
                 <button
-                  onClick={() => handleStatusUpdate('confirmed')}
+                  onClick={handleConfirmBooking}
                   disabled={updating}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   Confirm Booking
+                </button>
+              )}
+              {booking.status === 'waiting_payment' && (
+                <button
+                  onClick={() => handleStatusUpdate('confirmed')}
+                  disabled={updating}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Mark as Confirmed
                 </button>
               )}
               {booking.status === 'confirmed' && (
@@ -493,6 +525,50 @@ export default function BookingDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Payment Link Modal */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full border border-gray-200">
+            <h3 className="text-2xl font-bold mb-4 text-gray-900">Approve Booking & Send Payment Link</h3>
+            <p className="text-gray-600 mb-6">
+              Please enter the payment link to send to the customer. The booking will be set to "Waiting Payment" status and an email will be automatically sent with the payment link.
+            </p>
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-900 mb-2">
+                Payment Link <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="url"
+                value={paymentLink}
+                onChange={(e) => setPaymentLink(e.target.value)}
+                placeholder="https://payment.example.com/..."
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handlePaymentSubmit}
+                disabled={!paymentLink.trim() || updating}
+                className="flex-1 bg-gradient-to-r from-emerald-600 to-green-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-emerald-700 hover:to-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg"
+              >
+                {updating ? 'Processing...' : 'Send Payment Link'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setPaymentLink('');
+                }}
+                disabled={updating}
+                className="flex-1 bg-gray-100 text-gray-900 px-6 py-3 rounded-xl font-semibold hover:bg-gray-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

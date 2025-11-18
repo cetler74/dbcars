@@ -76,7 +76,7 @@ export default function AboutPage() {
                 className="object-cover"
                 unoptimized
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
               <div className="absolute bottom-4 left-4 right-4">
                 <p className="text-[0.65rem] uppercase tracking-[0.25em] text-gray-200">City lights</p>
                 <p className="text-sm md:text-base font-medium text-white">
@@ -92,7 +92,7 @@ export default function AboutPage() {
                 className="object-cover"
                 unoptimized
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
               <div className="absolute bottom-4 left-4 right-4">
                 <p className="text-[0.65rem] uppercase tracking-[0.25em] text-gray-200">Coast & desert</p>
                 <p className="text-sm md:text-base font-medium text-white">
@@ -108,7 +108,7 @@ export default function AboutPage() {
                 className="object-cover"
                 unoptimized
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
               <div className="absolute bottom-4 left-4 right-4">
                 <p className="text-[0.65rem] uppercase tracking-[0.25em] text-gray-200">Signature drives</p>
                 <p className="text-sm md:text-base font-medium text-white">
@@ -119,9 +119,41 @@ export default function AboutPage() {
           </div>
         </section>
 
+        {/* Section 2.5 – Photo left, text right */}
+        <section className="pt-10 md:pt-14 lg:pt-18 pb-2 md:pb-3 lg:pb-4 bg-white">
+          <div className="container mx-auto px-4 md:px-6 lg:px-12 flex flex-col md:flex-row items-center gap-10 lg:gap-14">
+            {/* Left container: photo only */}
+            <div className="w-full md:w-1/2 relative h-64 md:h-72 lg:h-[340px] rounded-3xl overflow-hidden">
+              <Image
+                src="/hero-cars.jpg"
+                alt="Luxury cars driving through Morocco"
+                fill
+                className="object-cover"
+                unoptimized
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+            </div>
+
+            {/* Right container: text only */}
+            <div className="w-full md:w-1/2 space-y-6">
+              <p className="text-xs md:text-sm tracking-[0.25em] uppercase text-gray-500">
+                DB Luxury Cars · Morocco
+              </p>
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-semibold tracking-tight text-gray-900">
+                Ultra‑luxury mobility for Morocco&apos;s most remarkable journeys.
+              </h2>
+              <p className="text-sm md:text-base text-gray-700 leading-relaxed">
+                Based in Morocco, DB Luxury Cars curates a hand‑picked fleet of luxury sedans, SUVs,
+                and supercars for guests who expect precision, discretion, and effortless service
+                from the moment they land.
+              </p>
+            </div>
+          </div>
+        </section>
+
         {/* Section 3 – Our Values & Mission (media-focused luxury section) */}
-        <section className="py-14 md:py-18 lg:py-20 bg-black">
-          <div className="container mx-auto px-4 md:px-6 lg:px-12 grid grid-cols-1 lg:grid-cols-[1.1fr,1fr] gap-10 lg:gap-16 items-center">
+        <section className="py-14 md:py-18 lg:py-20">
+          <div className="container mx-auto px-4 md:px-6 lg:px-12">
             {/* Left: large media */}
             <div className="relative h-72 md:h-80 lg:h-[360px] rounded-3xl overflow-hidden">
               <Image
@@ -154,57 +186,6 @@ export default function AboutPage() {
               </div>
             </div>
 
-            {/* Right: values & mission content */}
-            <div className="space-y-6 text-white">
-              <p className="text-xs md:text-sm tracking-[0.25em] uppercase text-gray-400">
-                Our values & mission
-              </p>
-              <h2 className="text-2xl md:text-3xl lg:text-4xl font-semibold leading-tight">
-                A brand built on discretion, timing, and genuine hospitality.
-              </h2>
-              <p className="text-sm md:text-base text-gray-200 leading-relaxed">
-                Our mission is simple: to make every movement across Morocco feel composed, confident,
-                and completely effortless, whether you are travelling for business, celebration, or escape.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-5">
-                <div className="rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5">
-                  <p className="text-xs uppercase tracking-[0.2em] text-gray-300 mb-1">
-                    Discretion
-                  </p>
-                  <p className="text-sm md:text-base text-gray-100">
-                    We move quietly around your schedule, keeping every interaction refined,
-                    private, and secure.
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5">
-                  <p className="text-xs uppercase tracking-[0.2em] text-gray-300 mb-1">
-                    Precision
-                  </p>
-                  <p className="text-sm md:text-base text-gray-100">
-                    Route planning, vehicle preparation, and timing are handled with the same care
-                    as a five‑star arrival.
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5">
-                  <p className="text-xs uppercase tracking-[0.2em] text-gray-300 mb-1">
-                    Authentic hospitality
-                  </p>
-                  <p className="text-sm md:text-base text-gray-100">
-                    A Moroccan welcome expressed through attentive service, thoughtful details,
-                    and real human warmth.
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5">
-                  <p className="text-xs uppercase tracking-[0.2em] text-gray-300 mb-1">
-                    Responsibility
-                  </p>
-                  <p className="text-sm md:text-base text-gray-100">
-                    Vehicles maintained to the highest standards, with safety and comfort as
-                    non‑negotiables for every guest.
-                  </p>
-                </div>
-              </div>
-            </div>
           </div>
         </section>
 

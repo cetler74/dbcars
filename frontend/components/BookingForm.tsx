@@ -165,10 +165,29 @@ export default function BookingForm({
     if (!formData.pickup_date || !formData.dropoff_date) return;
 
     try {
+      // Use the selected dates with their times, or normalize if at start of day
+      const normalizedPickupDate = new Date(formData.pickup_date);
+      const pickupHours = normalizedPickupDate.getUTCHours();
+      const pickupMinutes = normalizedPickupDate.getUTCMinutes();
+      const pickupSeconds = normalizedPickupDate.getUTCSeconds();
+      
+      if (pickupHours === 0 && pickupMinutes === 0 && pickupSeconds === 0) {
+        normalizedPickupDate.setUTCHours(0, 0, 0, 0);
+      }
+      
+      const normalizedDropoffDate = new Date(formData.dropoff_date);
+      const dropoffHours = normalizedDropoffDate.getUTCHours();
+      const dropoffMinutes = normalizedDropoffDate.getUTCMinutes();
+      const dropoffSeconds = normalizedDropoffDate.getUTCSeconds();
+      
+      if (dropoffHours === 0 && dropoffMinutes === 0 && dropoffSeconds === 0) {
+        normalizedDropoffDate.setUTCHours(23, 59, 59, 999);
+      }
+
       const availabilityData = await checkAvailability(
         vehicle.id,
-        formData.pickup_date.toISOString(),
-        formData.dropoff_date.toISOString()
+        normalizedPickupDate.toISOString(),
+        normalizedDropoffDate.toISOString()
       );
       setAvailability(availabilityData);
     } catch (error) {
@@ -186,24 +205,33 @@ export default function BookingForm({
           (1000 * 60 * 60 * 24)
       );
 
-      let basePrice = vehicle.base_price_daily * days;
-      if (days >= 30 && vehicle.base_price_monthly && vehicle.base_price_monthly > 0) {
-        const months = Math.floor(days / 30);
-        const remainingDays = days % 30;
+      // Ensure minimum 1 day rental
+      const rentalDays = Math.max(1, days);
+      
+      // Calculate hours for display
+      const hours = Math.ceil(
+        (formData.dropoff_date.getTime() - formData.pickup_date.getTime()) /
+          (1000 * 60 * 60)
+      );
+
+      let basePrice = vehicle.base_price_daily * rentalDays;
+      if (rentalDays >= 30 && vehicle.base_price_monthly && vehicle.base_price_monthly > 0) {
+        const months = Math.floor(rentalDays / 30);
+        const remainingDays = rentalDays % 30;
         basePrice = vehicle.base_price_monthly * months + vehicle.base_price_daily * remainingDays;
-      } else if (days >= 7 && vehicle.base_price_weekly && vehicle.base_price_weekly > 0) {
-        const weeks = Math.floor(days / 7);
-        const remainingDays = days % 7;
+      } else if (rentalDays >= 7 && vehicle.base_price_weekly && vehicle.base_price_weekly > 0) {
+        const weeks = Math.floor(rentalDays / 7);
+        const remainingDays = rentalDays % 7;
         basePrice = vehicle.base_price_weekly * weeks + vehicle.base_price_daily * remainingDays;
       }
 
       // Calculate extras price
       let extrasPrice = 0;
-      formData.selected_extras.forEach((selectedExtra) => {
+        formData.selected_extras.forEach((selectedExtra) => {
         const extra = extras.find((e) => e.id === selectedExtra.id);
         if (extra) {
           if (extra.price_type === 'per_day') {
-            extrasPrice += extra.price * days * (selectedExtra.quantity || 1);
+            extrasPrice += extra.price * rentalDays * (selectedExtra.quantity || 1);
           } else {
             extrasPrice += extra.price * (selectedExtra.quantity || 1);
           }
@@ -223,7 +251,8 @@ export default function BookingForm({
       const totalPrice = basePrice + extrasPrice - discountAmount;
 
       setPricing({
-        days,
+        days: rentalDays,
+        hours,
         base_price: basePrice,
         extras_price: extrasPrice,
         discount_amount: discountAmount,
@@ -299,6 +328,15 @@ export default function BookingForm({
         return;
       }
       
+      // Validate minimum 1 day (24 hours) rental period
+      const timeDiff = formData.dropoff_date.getTime() - formData.pickup_date.getTime();
+      const hoursDiff = timeDiff / (1000 * 60 * 60);
+      if (hoursDiff < 24) {
+        alert(`Minimum rental period is 1 day (24 hours). Your selected period is ${Math.round(hoursDiff * 10) / 10} hours.`);
+        setLoading(false);
+        return;
+      }
+      
       if (!formData.pickup_location_id || !formData.dropoff_location_id) {
         alert('Please select both pickup and dropoff locations');
         setLoading(false);
@@ -311,12 +349,52 @@ export default function BookingForm({
         return;
       }
 
+      // Normalize dates: if time is at start of day (00:00:00), normalize to full day range
+      // Otherwise, use the selected time
+      const normalizedPickupDate = new Date(formData.pickup_date);
+      const pickupHours = normalizedPickupDate.getUTCHours();
+      const pickupMinutes = normalizedPickupDate.getUTCMinutes();
+      const pickupSeconds = normalizedPickupDate.getUTCSeconds();
+      
+      // Only normalize if time is exactly at start of day
+      if (pickupHours === 0 && pickupMinutes === 0 && pickupSeconds === 0) {
+        normalizedPickupDate.setUTCHours(0, 0, 0, 0);
+      }
+      
+      const normalizedDropoffDate = new Date(formData.dropoff_date);
+      const dropoffHours = normalizedDropoffDate.getUTCHours();
+      const dropoffMinutes = normalizedDropoffDate.getUTCMinutes();
+      const dropoffSeconds = normalizedDropoffDate.getUTCSeconds();
+      
+      // Only normalize if time is exactly at start of day
+      if (dropoffHours === 0 && dropoffMinutes === 0 && dropoffSeconds === 0) {
+        normalizedDropoffDate.setUTCHours(23, 59, 59, 999); // End of dropoff day
+      }
+
+      // Check availability before submitting
+      try {
+        const availabilityCheck = await checkAvailability(
+          vehicle.id,
+          normalizedPickupDate.toISOString(),
+          normalizedDropoffDate.toISOString()
+        );
+        
+        if (!availabilityCheck.available) {
+          alert('Sorry, this vehicle is not available for the selected dates. Please choose different dates.');
+          setLoading(false);
+          return;
+        }
+      } catch (availabilityError) {
+        console.error('Error checking availability before submission:', availabilityError);
+        // Continue with submission - backend will also check availability
+      }
+
       const bookingData: any = {
         vehicle_id: vehicle.id,
         pickup_location_id: formData.pickup_location_id,
         dropoff_location_id: formData.dropoff_location_id,
-        pickup_date: formData.pickup_date.toISOString(),
-        dropoff_date: formData.dropoff_date.toISOString(),
+        pickup_date: normalizedPickupDate.toISOString(),
+        dropoff_date: normalizedDropoffDate.toISOString(),
         extras: Array.isArray(formData.selected_extras) ? formData.selected_extras : [],
         customer: customerData,
       };
@@ -326,19 +404,45 @@ export default function BookingForm({
         bookingData.coupon_code = coupon.code;
       }
 
-      console.log('Final booking data being sent:', bookingData);
+      console.log('Final booking data being sent:', JSON.stringify(bookingData, null, 2));
+      console.log('Booking data types:', {
+        vehicle_id: typeof bookingData.vehicle_id,
+        pickup_location_id: typeof bookingData.pickup_location_id,
+        dropoff_location_id: typeof bookingData.dropoff_location_id,
+        pickup_date: typeof bookingData.pickup_date,
+        dropoff_date: typeof bookingData.dropoff_date,
+        customer: typeof bookingData.customer,
+        extras: Array.isArray(bookingData.extras),
+      });
+      
       const booking = await createBooking(bookingData);
       router.push(`/booking/confirmation?bookingNumber=${booking.booking_number}`);
     } catch (error: any) {
       console.error('Booking error:', error);
       console.error('Error response:', error.response?.data);
+      console.error('Error response status:', error.response?.status);
+      console.error('Full error:', JSON.stringify(error, null, 2));
       
       let errorMessage = 'Error creating booking';
+      let isAvailabilityError = false;
+      
       if (error.response?.data) {
-        if (error.response.data.details) {
+        // Check if response data is empty object
+        if (Object.keys(error.response.data).length === 0) {
+          errorMessage = 'Validation failed: Please check that all required fields are filled correctly.';
+          console.error('Empty error response - likely validation issue');
+        } else if (error.response.data.details) {
           errorMessage = `Validation error: ${error.response.data.details}`;
         } else if (error.response.data.error) {
           errorMessage = error.response.data.error;
+          
+          // Check if it's an availability error
+          if (error.response.data.error.toLowerCase().includes('not available') || 
+              error.response.data.error.toLowerCase().includes('availability')) {
+            isAvailabilityError = true;
+            errorMessage = 'Sorry, this vehicle is not available for the selected dates. Please choose different dates and try again.';
+          }
+          
           if (error.response.data.errors && Array.isArray(error.response.data.errors)) {
             const errorList = error.response.data.errors.map((e: any) => {
               const param = e.param || e.path || 'unknown';
@@ -359,7 +463,12 @@ export default function BookingForm({
         errorMessage = error.message;
       }
       
-      alert(`Error creating booking: ${errorMessage}`);
+      // Show user-friendly error message
+      if (isAvailabilityError) {
+        alert(errorMessage);
+      } else {
+        alert(`Error creating booking: ${errorMessage}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -426,36 +535,97 @@ export default function BookingForm({
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Pick-up Date
+                Pick-up Date & Time
               </label>
               <DatePicker
                 selected={formData.pickup_date}
-                onChange={(date: Date | null) =>
-                  setFormData((prev) => ({ ...prev, pickup_date: date }))
-                }
+                onChange={(date: Date | null) => {
+                  setFormData((prev) => {
+                    // If dropoff date is same day or before new pickup date, reset it
+                    let newDropoffDate = prev.dropoff_date;
+                    if (date && prev.dropoff_date) {
+                      const minDropoffDate = new Date(date.getTime() + 24 * 60 * 60 * 1000);
+                      if (prev.dropoff_date <= date) {
+                        newDropoffDate = null;
+                      }
+                    }
+                    return { ...prev, pickup_date: date, dropoff_date: newDropoffDate };
+                  });
+                }}
                 minDate={new Date()}
                 filterDate={isDateAvailable}
+                showTimeSelect
+                timeFormat="HH:mm"
+                timeIntervals={30}
+                timeCaption="Time"
+                dateFormat="dd/MM/yyyy HH:mm"
+                placeholderText="Select date & time"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900"
-                dateFormat="yyyy-MM-dd"
                 required
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Drop-off Date
+                Drop-off Date & Time
               </label>
               <DatePicker
                 selected={formData.dropoff_date}
-                onChange={(date: Date | null) =>
-                  setFormData((prev) => ({ ...prev, dropoff_date: date }))
+                onChange={(date: Date | null) => {
+                  setFormData((prev) => {
+                    // Validate minimum 1 day rental period
+                    if (date && prev.pickup_date) {
+                      const timeDiff = date.getTime() - prev.pickup_date.getTime();
+                      const hoursDiff = timeDiff / (1000 * 60 * 60);
+                      if (hoursDiff < 24) {
+                        // If less than 24 hours, set to exactly 24 hours after pickup
+                        const minDropoffDate = new Date(prev.pickup_date.getTime() + 24 * 60 * 60 * 1000);
+                        return { ...prev, dropoff_date: minDropoffDate };
+                      }
+                    }
+                    return { ...prev, dropoff_date: date };
+                  });
+                }}
+                minDate={
+                  formData.pickup_date
+                    ? (() => {
+                        // Minimum date is the day after pickup (to ensure 24+ hours)
+                        const minDate = new Date(formData.pickup_date);
+                        minDate.setDate(minDate.getDate() + 1);
+                        return minDate;
+                      })()
+                    : new Date()
                 }
-                minDate={formData.pickup_date || new Date()}
-                filterDate={isDateAvailable}
+                filterDate={(date: Date) => {
+                  if (!formData.pickup_date) return isDateAvailable(date);
+                  // Prevent selecting same day as pickup
+                  if (date.toDateString() === formData.pickup_date.toDateString()) {
+                    return false;
+                  }
+                  return isDateAvailable(date);
+                }}
+                showTimeSelect
+                timeFormat="HH:mm"
+                timeIntervals={30}
+                timeCaption="Time"
+                dateFormat="dd/MM/yyyy HH:mm"
+                placeholderText="Select date & time"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900"
-                dateFormat="yyyy-MM-dd"
                 required
               />
+              <p className="text-xs text-gray-500 mt-1">Minimum rental period is 1 day (24 hours)</p>
+              {formData.pickup_date && formData.dropoff_date && (() => {
+                const timeDiff = formData.dropoff_date.getTime() - formData.pickup_date.getTime();
+                const hoursDiff = timeDiff / (1000 * 60 * 60);
+                if (hoursDiff < 24) {
+                  return (
+                    <p className="text-xs text-red-500 mt-1">
+                      Rental period must be at least 24 hours. Current: {Math.round(hoursDiff * 10) / 10} hours
+                    </p>
+                  );
+                }
+                return null;
+              })()}
             </div>
           </div>
 
@@ -481,8 +651,12 @@ export default function BookingForm({
             <div className="bg-gray-50 p-4 rounded-lg">
               <h3 className="font-semibold mb-2">Pricing Summary</h3>
               <div className="space-y-1">
+                <div className="flex justify-between text-xs text-gray-600 mb-1">
+                  <span>Rental Period:</span>
+                  <span>{pricing.days} {pricing.days === 1 ? 'day' : 'days'} ({pricing.hours} {pricing.hours === 1 ? 'hour' : 'hours'})</span>
+                </div>
                 <div className="flex justify-between">
-                  <span>Base Price ({pricing.days} days):</span>
+                  <span>Base Price ({pricing.days} {pricing.days === 1 ? 'day' : 'days'}):</span>
                   <span>€{pricing.base_price.toFixed(2)}</span>
                 </div>
                 {pricing.extras_price > 0 && (
@@ -633,8 +807,12 @@ export default function BookingForm({
                 <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
                   <h3 className="font-semibold mb-4 text-lg">Pricing Summary</h3>
                   <div className="space-y-3">
+                    <div className="flex justify-between text-xs text-gray-500 mb-2 pb-2 border-b border-gray-200">
+                      <span>Rental Period:</span>
+                      <span>{pricing.days} {pricing.days === 1 ? 'day' : 'days'} ({pricing.hours} {pricing.hours === 1 ? 'hour' : 'hours'})</span>
+                    </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Base Price ({pricing.days} days):</span>
+                      <span className="text-gray-600">Base Price ({pricing.days} {pricing.days === 1 ? 'day' : 'days'}):</span>
                       <span className="font-medium">€{pricing.base_price.toFixed(2)}</span>
                     </div>
                     {pricing.extras_price > 0 && (
@@ -897,8 +1075,8 @@ export default function BookingForm({
                             )}
                             {pricing && (
                               <div className="flex justify-between items-center pt-2 border-t border-gray-200 mt-2">
-                                <span className="text-gray-600 font-medium">Total Days:</span>
-                                <span className="font-bold text-gray-900">{pricing.days} {pricing.days === 1 ? 'day' : 'days'}</span>
+                                <span className="text-gray-600 font-medium">Rental Period:</span>
+                                <span className="font-bold text-gray-900">{pricing.days} {pricing.days === 1 ? 'day' : 'days'} ({pricing.hours} {pricing.hours === 1 ? 'hour' : 'hours'})</span>
                               </div>
                             )}
                           </div>
@@ -916,8 +1094,12 @@ export default function BookingForm({
                 <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
                   <h3 className="font-semibold mb-4 text-lg">Pricing Summary</h3>
                   <div className="space-y-3">
+                    <div className="flex justify-between text-xs text-gray-500 mb-2 pb-2 border-b border-gray-200">
+                      <span>Rental Period:</span>
+                      <span>{pricing.days} {pricing.days === 1 ? 'day' : 'days'} ({pricing.hours} {pricing.hours === 1 ? 'hour' : 'hours'})</span>
+                    </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Base Price ({pricing.days} days):</span>
+                      <span className="text-gray-600">Base Price ({pricing.days} {pricing.days === 1 ? 'day' : 'days'}):</span>
                       <span className="font-medium">€{pricing.base_price.toFixed(2)}</span>
                     </div>
                     {pricing.extras_price > 0 && (

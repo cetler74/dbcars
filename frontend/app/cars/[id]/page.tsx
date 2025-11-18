@@ -22,6 +22,8 @@ export default function VehicleDetailPage() {
   // Booking form state
   const [pickupDate, setPickupDate] = useState<Date | null>(null);
   const [dropoffDate, setDropoffDate] = useState<Date | null>(null);
+  const [pickupTime, setPickupTime] = useState<string>('');
+  const [dropoffTime, setDropoffTime] = useState<string>('');
   const [pickupLocation, setPickupLocation] = useState('');
   const [dropoffLocation, setDropoffLocation] = useState('');
   
@@ -110,12 +112,20 @@ export default function VehicleDetailPage() {
           const date = new Date(searchData.pickup_date);
           if (!isNaN(date.getTime())) {
             setPickupDate(date);
+            // Extract and set time
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            setPickupTime(`${hours}:${minutes}`);
           }
         }
         if (!dropoffDate && searchData.dropoff_date) {
           const date = new Date(searchData.dropoff_date);
           if (!isNaN(date.getTime())) {
             setDropoffDate(date);
+            // Extract and set time
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            setDropoffTime(`${hours}:${minutes}`);
           }
         }
       }
@@ -531,7 +541,7 @@ export default function VehicleDetailPage() {
           </div>
 
           {/* Right Side - Sticky Booking Widget */}
-          <div className="lg:w-96 lg:sticky lg:top-32 lg:self-start lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
+          <div className="lg:w-96 lg:sticky lg:top-32 lg:self-start">
             <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 space-y-6">
               {/* Get Detailed Quote Section */}
               <div className="space-y-4">
@@ -562,38 +572,152 @@ export default function VehicleDetailPage() {
                     />
                   </div>
 
-                  {/* Start Date */}
+                  {/* Start Date & Time */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
-                      Start Date <span className="text-red-500">*</span>
+                      Start Date & Time <span className="text-red-500">*</span>
                     </label>
-                    <DatePicker
-                      selected={pickupDate}
-                      onChange={(date: Date | null) => setPickupDate(date)}
-                      minDate={new Date()}
-                      filterDate={isDateAvailable}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                      dateFormat="dd/MM/yyyy"
-                      placeholderText="dd/mm/yyyy"
-                      required
-                    />
+                    <div className="flex gap-2 items-stretch">
+                      {/* Time Picker - appears first */}
+                      <div className="w-28 flex-shrink-0">
+                        <input
+                          type="time"
+                          value={pickupTime}
+                          onChange={(e) => {
+                            setPickupTime(e.target.value);
+                            // Update the date with new time
+                            if (pickupDate && e.target.value) {
+                              const [hours, minutes] = e.target.value.split(':');
+                              const newDate = new Date(pickupDate);
+                              newDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                              setPickupDate(newDate);
+                            }
+                          }}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 h-[42px]"
+                          required
+                        />
+                      </div>
+                      {/* Date Picker - appears after time */}
+                      <div className="flex-1">
+                        <DatePicker
+                          selected={pickupDate}
+                          onChange={(date: Date | null) => {
+                            if (date) {
+                              // Preserve time if it was set
+                              if (pickupTime) {
+                                const [hours, minutes] = pickupTime.split(':');
+                                date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                              }
+                            }
+                            setPickupDate(date);
+                            // If dropoff date is same day or before new pickup date, reset it
+                            if (date && dropoffDate && dropoffDate <= date) {
+                              setDropoffDate(null);
+                            }
+                          }}
+                          minDate={new Date()}
+                          filterDate={isDateAvailable}
+                          dateFormat="dd/MM/yyyy"
+                          placeholderText="dd/mm/yyyy"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 h-[42px]"
+                          required
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  {/* End Date */}
+                  {/* End Date & Time */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
-                      End Date <span className="text-red-500">*</span>
+                      End Date & Time <span className="text-red-500">*</span>
                     </label>
-                    <DatePicker
-                      selected={dropoffDate}
-                      onChange={(date: Date | null) => setDropoffDate(date)}
-                      minDate={pickupDate || new Date()}
-                      filterDate={isDateAvailable}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                      dateFormat="dd/MM/yyyy"
-                      placeholderText="dd/mm/yyyy"
-                      required
-                    />
+                    <div className="flex gap-2 items-stretch">
+                      {/* Time Picker - appears first */}
+                      <div className="w-28 flex-shrink-0">
+                        <input
+                          type="time"
+                          value={dropoffTime}
+                          onChange={(e) => {
+                            setDropoffTime(e.target.value);
+                            // Update the date with new time
+                            if (dropoffDate && e.target.value) {
+                              const [hours, minutes] = e.target.value.split(':');
+                              const newDate = new Date(dropoffDate);
+                              newDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                              setDropoffDate(newDate);
+                            }
+                          }}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 h-[42px]"
+                          required
+                        />
+                      </div>
+                      {/* Date Picker - appears after time */}
+                      <div className="flex-1">
+                        <DatePicker
+                          selected={dropoffDate}
+                          onChange={(date: Date | null) => {
+                            if (date) {
+                              // Preserve time if it was set
+                              if (dropoffTime) {
+                                const [hours, minutes] = dropoffTime.split(':');
+                                date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                              }
+                              // Validate minimum 1 day rental period
+                              if (pickupDate) {
+                                const timeDiff = date.getTime() - pickupDate.getTime();
+                                const hoursDiff = timeDiff / (1000 * 60 * 60);
+                                if (hoursDiff < 24) {
+                                  // If less than 24 hours, set to exactly 24 hours after pickup
+                                  const minDropoffDate = new Date(pickupDate.getTime() + 24 * 60 * 60 * 1000);
+                                  if (dropoffTime) {
+                                    const [hours, minutes] = dropoffTime.split(':');
+                                    minDropoffDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                                  }
+                                  setDropoffDate(minDropoffDate);
+                                  return;
+                                }
+                              }
+                            }
+                            setDropoffDate(date);
+                          }}
+                          minDate={
+                            pickupDate
+                              ? (() => {
+                                  // Minimum date is the day after pickup (to ensure 24+ hours)
+                                  const minDate = new Date(pickupDate);
+                                  minDate.setDate(minDate.getDate() + 1);
+                                  return minDate;
+                                })()
+                              : new Date()
+                          }
+                          filterDate={(date: Date) => {
+                            if (!pickupDate) return isDateAvailable(date);
+                            // Prevent selecting same day as pickup
+                            if (date.toDateString() === pickupDate.toDateString()) {
+                              return false;
+                            }
+                            return isDateAvailable(date);
+                          }}
+                          dateFormat="dd/MM/yyyy"
+                          placeholderText="dd/mm/yyyy"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 h-[42px]"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Minimum rental period is 1 day (24 hours)</p>
+                    {pickupDate && dropoffDate && (() => {
+                      const timeDiff = dropoffDate.getTime() - pickupDate.getTime();
+                      const hoursDiff = timeDiff / (1000 * 60 * 60);
+                      if (hoursDiff < 24) {
+                        return (
+                          <p className="text-xs text-red-500 mt-1">
+                            Rental period must be at least 24 hours. Current: {Math.round(hoursDiff * 10) / 10} hours
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
 
                   {/* Pickup Location */}

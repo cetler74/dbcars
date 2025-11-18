@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Save, AlertCircle, FileText, Calendar } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
+import toast from 'react-hot-toast';
 
 interface InlineNoteFormProps {
   isOpen: boolean;
@@ -50,21 +51,30 @@ export default function InlineNoteForm({
   const formRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen && editingNote) {
-      // Edit mode - populate form with existing note data
-      setNote(editingNote.note);
-      setNoteType(editingNote.note_type);
-      const noteDate = new Date(editingNote.note_date);
-      setDateRange({ start: noteDate, end: noteDate });
+    if (isOpen) {
+      if (editingNote) {
+        // Edit mode - populate form with existing note data
+        setNote(editingNote.note);
+        setNoteType(editingNote.note_type);
+        const noteDate = new Date(editingNote.note_date);
+        setDateRange({ start: noteDate, end: noteDate });
+      } else {
+        // New note mode - initialize with provided date/range
+        if (date) {
+          setDateRange({ start: date, end: date });
+        } else if (initialDateRange) {
+          setDateRange({ start: initialDateRange.start, end: initialDateRange.end });
+        } else {
+          // If no date provided, initialize with today
+          const today = new Date();
+          setDateRange({ start: today, end: today });
+        }
+      }
     } else if (!isOpen) {
       // Reset form when closed
       setNote('');
       setNoteType('maintenance');
-      if (date) {
-        setDateRange({ start: date, end: date });
-      } else if (initialDateRange) {
-        setDateRange({ start: initialDateRange.start, end: initialDateRange.end });
-      }
+      setDateRange({ start: null, end: null });
     }
   }, [isOpen, date, initialDateRange, editingNote]);
 
@@ -85,37 +95,52 @@ export default function InlineNoteForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate note
     if (!note.trim()) {
+      toast.error('Please enter a note');
       return;
     }
 
+    // Validate date
     if (!dateRange.start) {
+      toast.error('Please select a date');
       return;
     }
 
-    // If we have both start and end dates (and they're different), use date range
-    if (dateRange.end && dateRange.start.getTime() !== dateRange.end.getTime()) {
-      onSave({
-        dateRange: {
-          start: dateRange.start,
-          end: dateRange.end,
-        },
-        note: note.trim(),
-        note_type: noteType,
-        vehicle_id: vehicleId,
-        vehicle_subunit_id: subunitId,
-        note_id: editingNote?.id,
-      });
-    } else {
-      // Single date
-      onSave({
-        date: dateRange.start,
-        note: note.trim(),
-        note_type: noteType,
-        vehicle_id: vehicleId,
-        vehicle_subunit_id: subunitId,
-        note_id: editingNote?.id,
-      });
+    try {
+      // If we have both start and end dates (and they're different), use date range
+      if (dateRange.end && dateRange.start.getTime() !== dateRange.end.getTime()) {
+        onSave({
+          dateRange: {
+            start: dateRange.start,
+            end: dateRange.end,
+          },
+          note: note.trim(),
+          note_type: noteType,
+          vehicle_id: vehicleId,
+          vehicle_subunit_id: subunitId,
+          note_id: editingNote?.id,
+        });
+      } else {
+        // Single date (use start date, or end date if start is null)
+        const selectedDate = dateRange.start || dateRange.end;
+        if (!selectedDate) {
+          toast.error('Please select a date');
+          return;
+        }
+        onSave({
+          date: selectedDate,
+          note: note.trim(),
+          note_type: noteType,
+          vehicle_id: vehicleId,
+          vehicle_subunit_id: subunitId,
+          note_id: editingNote?.id,
+        });
+      }
+    } catch (error) {
+      console.error('Error saving note:', error);
+      toast.error('Failed to save note');
     }
   };
 
@@ -151,12 +176,18 @@ export default function InlineNoteForm({
             <Calendar className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
             <DatePicker
               selected={dateRange.start}
-              onChange={(dates: [Date | null, Date | null] | null) => {
-                if (dates) {
+              onChange={(dates: [Date | null, Date | null] | Date | null) => {
+                if (Array.isArray(dates)) {
                   const [start, end] = dates;
                   setDateRange({
-                    start: start,
-                    end: end || start,
+                    start: start || null,
+                    end: end || null,
+                  });
+                } else if (dates) {
+                  // Single date selected - treat as start date
+                  setDateRange({
+                    start: dates,
+                    end: null,
                   });
                 } else {
                   setDateRange({ start: null, end: null });
@@ -164,7 +195,9 @@ export default function InlineNoteForm({
               }}
               startDate={dateRange.start}
               endDate={dateRange.end}
-              selectsRange
+              selectsRange={true}
+              shouldCloseOnSelect={false}
+              allowSameDay={true}
               minDate={editingNote ? undefined : new Date()}
               className="w-full pl-8 pr-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
               wrapperClassName="w-full"

@@ -194,13 +194,35 @@ export async function sendBookingStatusEmail(booking: BookingStatusEmailData) {
   });
 
   if (!apiKey || !senderEmail) {
-    console.warn(
-      '[Brevo] Missing BREVO_API_KEY or BREVO_SENDER_EMAIL. Skipping status email send.'
+    const error = new Error(
+      `Missing BREVO configuration: ${!apiKey ? 'BREVO_API_KEY' : ''} ${!senderEmail ? 'BREVO_SENDER_EMAIL' : ''}`
     );
-    return;
+    console.error('[Brevo] Missing BREVO_API_KEY or BREVO_SENDER_EMAIL. Cannot send status email.');
+    console.error('[Brevo] Please configure BREVO_API_KEY and BREVO_SENDER_EMAIL in your .env file');
+    throw error; // Throw error so it's caught by the caller
   }
 
   const statusContent = getStatusEmailContent(booking.status);
+
+  // If payment link is present, customize the message to emphasize payment request
+  let emailMessage = statusContent.message;
+  let emailSubject = statusContent.subject;
+  if (booking.payment_link) {
+    if (booking.status === 'waiting_payment') {
+      emailMessage = 'Your booking has been approved! Please complete the payment using the link below to confirm your reservation.';
+      emailSubject = 'Payment Required - Action Needed';
+    } else if (booking.status === 'pending') {
+      emailMessage = 'Your booking has been reviewed and approved! Please complete the payment using the link below to proceed with your reservation.';
+      emailSubject = 'Payment Required - Complete Your Booking';
+    } else if (booking.status === 'confirmed') {
+      // Even if confirmed, if payment link is present, it might be for additional payment
+      emailMessage = 'Your booking is confirmed. Please complete the payment using the link below if payment is still pending.';
+      emailSubject = 'Payment Link - Complete Your Booking';
+    } else {
+      emailMessage = 'Please complete the payment using the link below.';
+      emailSubject = 'Payment Required';
+    }
+  }
 
   const pickupDate = new Date(booking.pickup_date).toLocaleDateString('en-GB', {
     day: '2-digit',
@@ -221,17 +243,18 @@ export async function sendBookingStatusEmail(booking: BookingStatusEmailData) {
     minute: '2-digit'
   });
 
-  // Build payment link section if available
+  // Build payment link section if available - make it more prominent
   const paymentLinkHtml = booking.payment_link
     ? `
-      <div style="background-color: #f0fdf4; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0;">
-        <h3 style="margin-top: 0; color: #10b981;">Payment Link</h3>
-        <p>Click the button below to complete your payment:</p>
+      <div style="background-color: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 20px; margin: 25px 0; text-align: center;">
+        <h2 style="margin-top: 0; color: #10b981; font-size: 24px;">💰 Payment Required</h2>
+        <p style="font-size: 16px; color: #333; margin-bottom: 20px;">Please complete your payment to secure your booking. Click the button below to proceed:</p>
         <a href="${booking.payment_link}" 
-           style="display: inline-block; background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 10px;">
-          Complete Payment
+           style="display: inline-block; background-color: #10b981; color: white; padding: 15px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; margin: 10px 0;">
+          💳 Complete Payment Now
         </a>
-        <p style="margin-top: 10px; font-size: 0.9em; color: #666;">Or copy this link: <a href="${booking.payment_link}">${booking.payment_link}</a></p>
+        <p style="margin-top: 15px; font-size: 0.9em; color: #666;">Or copy and paste this link into your browser:<br><a href="${booking.payment_link}" style="color: #10b981; word-break: break-all;">${booking.payment_link}</a></p>
+        <p style="margin-top: 15px; font-size: 0.85em; color: #888; font-style: italic;">Please complete payment as soon as possible to confirm your reservation.</p>
       </div>
     `
     : '';
@@ -251,7 +274,7 @@ export async function sendBookingStatusEmail(booking: BookingStatusEmailData) {
       <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
         <h2 style="color: ${statusContent.statusColor};">${statusContent.heading}</h2>
         <p>Dear ${booking.first_name} ${booking.last_name},</p>
-        <p>${statusContent.message}</p>
+        <p>${emailMessage}</p>
         
         ${paymentLinkHtml}
         ${notesHtml}
@@ -302,7 +325,7 @@ export async function sendBookingStatusEmail(booking: BookingStatusEmailData) {
   const customerPayload = {
     sender: { email: senderEmail, name: senderName },
     to: [{ email: booking.email, name: `${booking.first_name} ${booking.last_name}` }],
-    subject: `${statusContent.subject} - ${booking.booking_number}`,
+    subject: `${emailSubject} - ${booking.booking_number}`,
     htmlContent: customerHtml,
   };
 
@@ -357,17 +380,137 @@ export async function sendBookingStatusEmail(booking: BookingStatusEmailData) {
 
   try {
     console.log('[Brevo] Sending customer email to:', booking.email);
-    await axios.post(BREVO_API_URL, customerPayload, {
+    console.log('[Brevo] Email subject:', customerPayload.subject);
+    console.log('[Brevo] Has payment link:', !!booking.payment_link);
+    
+    const customerResponse = await axios.post(BREVO_API_URL, customerPayload, {
       headers: {
         'api-key': apiKey,
         'Content-Type': 'application/json',
         accept: 'application/json',
       },
     });
-    console.log('[Brevo] Customer email sent successfully');
+    console.log('[Brevo] Customer email sent successfully. Response status:', customerResponse.status);
 
     if (adminPayload) {
       console.log('[Brevo] Sending admin email to:', adminEmail);
+      const adminResponse = await axios.post(BREVO_API_URL, adminPayload, {
+        headers: {
+          'api-key': apiKey,
+          'Content-Type': 'application/json',
+          accept: 'application/json',
+        },
+      });
+      console.log('[Brevo] Admin email sent successfully. Response status:', adminResponse.status);
+    }
+
+    console.log(
+      '[Brevo] ✅ Booking status email sent successfully for booking:',
+      booking.booking_number,
+      'status:',
+      booking.status,
+      'to:',
+      booking.email
+    );
+  } catch (error: any) {
+    console.error('[Brevo] ❌ Failed to send booking status email:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      booking_number: booking.booking_number,
+      customer_email: booking.email,
+    });
+    
+    // Re-throw the error so caller knows it failed
+    throw error;
+  }
+}
+
+interface ContactEmailData {
+  name: string;
+  email: string;
+  message: string;
+}
+
+export async function sendContactEmail(contact: ContactEmailData) {
+  const apiKey = process.env.BREVO_API_KEY;
+  const senderEmail =
+    process.env.BREVO_SENDER_EMAIL || process.env.BREVO_DEFAULT_SENDER_EMAIL;
+  const senderName = process.env.BREVO_SENDER_NAME || 'DB Luxury Cars';
+  const adminEmail = process.env.BREVO_ADMIN_EMAIL;
+
+  if (!apiKey || !senderEmail) {
+    console.warn(
+      '[Brevo] Missing BREVO_API_KEY or BREVO_SENDER_EMAIL. Skipping contact email send.'
+    );
+    return;
+  }
+
+  const adminHtml = `
+    <html>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <h2 style="color: #f97316;">New Contact Form Submission</h2>
+        <p>A new message has been received through the contact form:</p>
+        
+        <div style="background-color: #f9fafb; border-left: 4px solid #f97316; padding: 20px; margin: 20px 0;">
+          <p><strong>Name:</strong> ${contact.name}</p>
+          <p><strong>Email:</strong> <a href="mailto:${contact.email}">${contact.email}</a></p>
+          <p><strong>Message:</strong></p>
+          <p style="white-space: pre-wrap; background-color: white; padding: 15px; border-radius: 4px; margin-top: 10px;">${contact.message}</p>
+        </div>
+        
+        <p style="margin-top: 30px;">
+          <a href="mailto:${contact.email}" style="background-color: #f97316; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">
+            Reply to ${contact.name}
+          </a>
+        </p>
+        
+        <p style="margin-top: 20px; color: #666; font-size: 0.9em;">
+          This is an automated notification from the DB Luxury Cars contact form.
+        </p>
+      </body>
+    </html>
+  `;
+
+  const customerHtml = `
+    <html>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <h2 style="color: #10b981;">Thank You for Contacting Us</h2>
+        <p>Dear ${contact.name},</p>
+        <p>Thank you for reaching out to DB Luxury Cars. We have received your message and will get back to you as soon as possible.</p>
+        
+        <div style="background-color: #f0fdf4; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Your Message:</strong></p>
+          <p style="white-space: pre-wrap; background-color: white; padding: 15px; border-radius: 4px; margin-top: 10px;">${contact.message}</p>
+        </div>
+        
+        <p>Our team typically responds within 24 hours. If your inquiry is urgent, please call us at <strong>+212 524 123456</strong>.</p>
+        
+        <p>Best regards,<br>DB Luxury Cars Team</p>
+      </body>
+    </html>
+  `;
+
+  const adminPayload = adminEmail
+    ? {
+        sender: { email: senderEmail, name: senderName },
+        to: [{ email: adminEmail, name: 'DB Luxury Cars Admin' }],
+        subject: `New Contact Form Submission from ${contact.name}`,
+        htmlContent: adminHtml,
+      }
+    : null;
+
+  const customerPayload = {
+    sender: { email: senderEmail, name: senderName },
+    to: [{ email: contact.email, name: contact.name }],
+    subject: 'Thank You for Contacting DB Luxury Cars',
+    htmlContent: customerHtml,
+  };
+
+  try {
+    // Send to admin
+    if (adminPayload) {
       await axios.post(BREVO_API_URL, adminPayload, {
         headers: {
           'api-key': apiKey,
@@ -375,17 +518,20 @@ export async function sendBookingStatusEmail(booking: BookingStatusEmailData) {
           accept: 'application/json',
         },
       });
-      console.log('[Brevo] Admin email sent successfully');
+      console.log('[Brevo] Contact form notification sent to admin');
     }
 
-    console.log(
-      '[Brevo] Booking status email sent for booking:',
-      booking.booking_number,
-      'status:',
-      booking.status
-    );
+    // Send confirmation to customer
+    await axios.post(BREVO_API_URL, customerPayload, {
+      headers: {
+        'api-key': apiKey,
+        'Content-Type': 'application/json',
+        accept: 'application/json',
+      },
+    });
+    console.log('[Brevo] Contact form confirmation sent to customer:', contact.email);
   } catch (error: any) {
-    console.error('[Brevo] Failed to send booking status email:', {
+    console.error('[Brevo] Failed to send contact email:', {
       message: error.message,
       response: error.response?.data,
       status: error.response?.status,

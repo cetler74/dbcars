@@ -145,7 +145,7 @@ export default function Header() {
 
   return (
     <header
-      className="sticky top-0 z-50 transition-all bg-black shadow-sm"
+      className={`sticky top-0 z-50 transition-all ${isHomePage ? 'bg-transparent' : 'bg-black shadow-sm'}`}
     >
       <nav className="container mx-auto px-4 md:px-6 py-4 bg-transparent">
         <div className="flex items-center justify-between">

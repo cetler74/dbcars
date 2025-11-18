@@ -1,8 +1,9 @@
 'use client';
 
 import * as React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 interface Review {
@@ -20,6 +21,7 @@ interface ReviewCarouselProps {
   reviews?: Review[];
   autoPlay?: boolean;
   autoPlayInterval?: number;
+  visibleCards?: number; // Number of cards visible at once (1-3)
   className?: string;
 }
 
@@ -73,233 +75,322 @@ const defaultReviews: Review[] = [
     rating: 5,
     text: "The scalability and performance have been game-changing for our organization. Highly recommend to any growing business.",
     date: "2 months ago"
+  },
+  {
+    id: 6,
+    name: "David Martinez",
+    role: "CEO",
+    company: "StartupHub",
+    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=face",
+    rating: 5,
+    text: "Exceptional service and premium quality. The team went above and beyond to ensure our satisfaction. Truly outstanding experience!",
+    date: "3 weeks ago"
+  },
+  {
+    id: 7,
+    name: "Rachel Green",
+    role: "Marketing Director",
+    company: "BrandVision",
+    avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face",
+    rating: 5,
+    text: "Professional, reliable, and absolutely stunning vehicles. Every detail was perfect. We'll definitely be back for future events.",
+    date: "1 month ago"
+  },
+  {
+    id: 8,
+    name: "Thomas Anderson",
+    role: "Finance Director",
+    company: "CapitalFlow",
+    avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop&crop=face",
+    rating: 5,
+    text: "The booking process was seamless and the vehicle exceeded all expectations. Top-tier service from start to finish.",
+    date: "2 weeks ago"
+  },
+  {
+    id: 9,
+    name: "Sophie Laurent",
+    role: "Event Coordinator",
+    company: "Elite Events",
+    avatar: "https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=150&h=150&fit=crop&crop=face",
+    rating: 5,
+    text: "Perfect for our corporate events. The luxury vehicles made a lasting impression on our clients. Highly professional service.",
+    date: "4 weeks ago"
+  },
+  {
+    id: 10,
+    name: "Robert Chen",
+    role: "Business Owner",
+    company: "TechStart Inc",
+    avatar: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&h=150&fit=crop&crop=face",
+    rating: 5,
+    text: "Outstanding customer service and immaculate vehicles. The attention to detail is remarkable. Worth every penny!",
+    date: "1 week ago"
+  },
+  {
+    id: 11,
+    name: "Amanda Foster",
+    role: "Operations Manager",
+    company: "Global Logistics",
+    avatar: "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=150&h=150&fit=crop&crop=face",
+    rating: 5,
+    text: "Reliable, luxurious, and professional. The entire experience was flawless. I couldn't have asked for better service.",
+    date: "3 weeks ago"
+  },
+  {
+    id: 12,
+    name: "Christopher Lee",
+    role: "Executive Director",
+    company: "Premier Holdings",
+    avatar: "https://images.unsplash.com/photo-1507591064344-4c6cefdb1f77?w=150&h=150&fit=crop&crop=face",
+    rating: 5,
+    text: "The premium fleet and exceptional service set a new standard. Our clients were thoroughly impressed. Excellent work!",
+    date: "2 months ago"
   }
 ];
 
 export function ReviewCarousel({
   reviews = defaultReviews,
   autoPlay = true,
-  autoPlayInterval = 5000,
+  autoPlayInterval = 3000,
+  visibleCards = 3,
   className
 }: ReviewCarouselProps) {
-  const [currentIndex, setCurrentIndex] = React.useState(0);
-  const [direction, setDirection] = React.useState(0);
-
-  const handleNext = React.useCallback(() => {
-    setDirection(1);
-    setCurrentIndex((prev) => (prev + 1) % reviews.length);
-  }, [reviews.length]);
-
-  const handlePrev = React.useCallback(() => {
-    setDirection(-1);
-    setCurrentIndex((prev) => (prev - 1 + reviews.length) % reviews.length);
-  }, [reviews.length]);
-
+  const carouselRef = React.useRef<HTMLDivElement>(null);
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const [cardStyles, setCardStyles] = React.useState<Record<number, { opacity: number; scale: number }>>({});
+  
+  // Create duplicated reviews for infinite loop (2 sets for seamless scrolling)
+  const duplicatedReviews = [...reviews, ...reviews];
+  
+  // Update card styles based on position in viewport
   React.useEffect(() => {
-    if (!autoPlay) return;
+    const updateCardStyles = () => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+      
+      const containerRect = container.getBoundingClientRect();
+      const containerCenter = containerRect.left + containerRect.width / 2;
+      
+      const styles: Record<number, { opacity: number; scale: number }> = {};
+      
+      container.querySelectorAll('[data-card-index]').forEach((card) => {
+        const cardElement = card as HTMLElement;
+        const index = parseInt(cardElement.dataset.cardIndex || '0');
+        const rect = cardElement.getBoundingClientRect();
+        const cardCenter = rect.left + rect.width / 2;
+        const distanceFromCenter = Math.abs(cardCenter - containerCenter);
+        const maxDistance = containerRect.width / 2;
+        
+        // Calculate opacity: 1 at center, fading to 0.4 at edges
+        const opacity = Math.max(0.4, 1 - (distanceFromCenter / maxDistance) * 0.6);
+        // Calculate scale: 1 at center, 0.92 at edges
+        const scale = Math.max(0.92, 1 - (distanceFromCenter / maxDistance) * 0.08);
+        
+        styles[index] = { opacity, scale };
+      });
+      
+      setCardStyles(styles);
+    };
     
-    const interval = setInterval(handleNext, autoPlayInterval);
-    return () => clearInterval(interval);
-  }, [autoPlay, autoPlayInterval, handleNext]);
+    // Wait for next frame to ensure DOM is ready
+    let interval: NodeJS.Timeout | null = null;
+    const timeoutId = setTimeout(() => {
+      updateCardStyles();
+      interval = setInterval(updateCardStyles, 100);
+    }, 0);
+    
+    return () => {
+      clearTimeout(timeoutId);
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, []);
+  
+  // Responsive visible cards: 1 on mobile, 3 on desktop
+  const [responsiveVisibleCards, setResponsiveVisibleCards] = React.useState(3);
+  
+  React.useEffect(() => {
+    const updateVisibleCards = () => {
+      if (window.innerWidth < 768) {
+        setResponsiveVisibleCards(1);
+      } else if (window.innerWidth < 1024) {
+        setResponsiveVisibleCards(2);
+      } else {
+        setResponsiveVisibleCards(3);
+      }
+    };
+    
+    updateVisibleCards();
+    window.addEventListener('resize', updateVisibleCards);
+    return () => window.removeEventListener('resize', updateVisibleCards);
+  }, []);
 
-  const slideVariants = {
-    enter: (direction: number) => ({
-      x: direction > 0 ? 1000 : -1000,
-      opacity: 0,
-      scale: 0.9
-    }),
-    center: {
-      x: 0,
-      opacity: 1,
-      scale: 1
-    },
-    exit: (direction: number) => ({
-      x: direction < 0 ? 1000 : -1000,
-      opacity: 0,
-      scale: 0.9
-    })
-  };
-
-  const currentReview = reviews[currentIndex];
+  const actualVisibleCards = responsiveVisibleCards;
+  
+  // Calculate animation duration based on number of reviews
+  // More reviews = longer duration for smooth continuous scroll
+  const animationDuration = reviews.length * 8; // 8 seconds per review for slower, smoother scroll
 
   return (
-    <section className={cn("w-full py-20", className)} style={{ backgroundColor: '#1a1a1a' }}>
-      <div className="container mx-auto px-4">
-        <div className="text-center mb-12">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-orange-500/10 border border-orange-500/20 mb-4"
-          >
-            <Star className="h-4 w-4 text-orange-500 fill-orange-500" />
-            <span className="text-sm font-medium text-orange-500">Customer Reviews</span>
-          </motion.div>
-          
+    <section 
+      className={cn("w-full py-24 md:py-32 lg:py-40 relative overflow-hidden", className)}
+      role="region"
+      aria-label="Customer reviews carousel"
+    >
+      {/* Background Image */}
+      <div className="absolute inset-0 z-0">
+        <Image
+          src="/hero-about.jpg"
+          alt="Luxury car background"
+          fill
+          className="object-cover"
+          priority
+          unoptimized
+        />
+      </div>
+      {/* Overlay for better text readability */}
+      <div className="absolute inset-0 bg-black/60 z-10"></div>
+      
+      <div className="container mx-auto px-4 md:px-6 lg:px-12 relative z-20">
+        <div className="text-center mb-16 md:mb-20">
           <motion.h2
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1 }}
-            className="text-4xl md:text-5xl font-bold tracking-tight mb-4 text-white"
+            className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-5 tracking-[-0.03em] leading-[1.1]"
           >
             What Our Clients Say
           </motion.h2>
+          
+          <div className="w-16 h-0.5 bg-gradient-to-r from-transparent via-orange-500 to-transparent mx-auto mb-6"></div>
           
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-lg text-gray-300 max-w-2xl mx-auto"
+            className="text-white/80 text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed"
           >
             Trusted by industry leaders worldwide
           </motion.p>
         </div>
 
-        <div className="relative max-w-4xl mx-auto">
-          <div className="relative h-[400px] md:h-[350px] overflow-hidden">
-            <AnimatePresence initial={false} custom={direction} mode="wait">
-              <motion.div
-                key={currentIndex}
-                custom={direction}
-                variants={slideVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{
-                  x: { type: "spring", stiffness: 300, damping: 30 },
-                  opacity: { duration: 0.3 },
-                  scale: { duration: 0.3 }
+          <div 
+            ref={carouselRef}
+            className="relative w-full max-w-7xl mx-auto"
+            tabIndex={0}
+          >
+            <div 
+              ref={scrollContainerRef}
+              className="relative overflow-hidden w-full"
+              style={{ 
+                minHeight: '400px'
+              }}
+            >
+              <div
+                className={cn(
+                  "flex",
+                  autoPlay ? "animate-scroll-reviews" : ""
+                )}
+                style={{
+                  gap: '1.5rem',
+                  width: 'max-content',
+                  animationDuration: `${animationDuration}s`,
+                  animationPlayState: 'running',
+                  willChange: 'transform'
                 }}
-                className="absolute inset-0"
               >
-                <div className="h-full rounded-2xl p-8 md:p-10 shadow-lg border" style={{ backgroundColor: '#2d3748', borderColor: '#4a5568' }}>
-                  <div className="flex flex-col h-full">
-                    <div className="flex items-start gap-6 mb-6">
-                      <img
-                        src={currentReview.avatar}
-                        alt={currentReview.name}
-                        className="w-16 h-16 rounded-full object-cover border-2 border-orange-500/20"
-                      />
-                      <div className="flex-1">
-                        <h3 className="text-xl font-semibold text-white mb-1">
-                          {currentReview.name}
-                        </h3>
-                        <p className="text-sm text-gray-300 mb-1">
-                          {currentReview.role}
-                        </p>
-                        <p className="text-sm text-gray-400">
-                          {currentReview.company}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {Array.from({ length: currentReview.rating }).map((_, i) => (
-                          <motion.div
-                            key={i}
-                            initial={{ opacity: 0, scale: 0 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: i * 0.1, duration: 0.3 }}
-                          >
-                            <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                          </motion.div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <motion.blockquote
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.2, duration: 0.5 }}
-                      className="text-lg text-white leading-relaxed mb-6 flex-1"
+                {duplicatedReviews.map((review, index) => {
+                  const cardStyle = cardStyles[index] || { opacity: 1, scale: 1 };
+                  
+                  // Fixed width for cards to ensure 3 are visible
+                  // Container max-width is 1280px (max-w-7xl), with padding ~96px = ~1184px available
+                  // For 3 cards with 2 gaps of 24px each: (1184 - 48) / 3 ≈ 378px per card
+                  // Using 380px for better fit
+                  const cardWidth = actualVisibleCards === 1 
+                    ? '100%' 
+                    : actualVisibleCards === 2 
+                    ? '500px' 
+                    : '380px';
+                  
+                  return (
+                    <motion.div
+                      key={`${review.id}-${index}`}
+                      data-card-index={index}
+                      className="flex-shrink-0 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-2xl transition-all duration-500 p-5"
+                      style={{
+                        width: cardWidth,
+                        aspectRatio: '1 / 1',
+                        minHeight: '0'
+                      }}
+                      initial={false}
+                      animate={{
+                        opacity: cardStyle.opacity,
+                        scale: cardStyle.scale
+                      }}
+                      transition={{
+                        duration: 0.3,
+                        ease: "easeOut"
+                      }}
                     >
-                      "{currentReview.text}"
-                    </motion.blockquote>
+                    <div className="flex flex-col h-full justify-between">
+                      <div>
+                        <div className="flex items-start gap-3 mb-3">
+                          <img
+                            src={review.avatar}
+                            alt={review.name}
+                            className="w-12 h-12 rounded-full object-cover border-2 border-orange-500/40 shadow-lg flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-sm font-semibold text-white mb-0.5 truncate">
+                              {review.name}
+                            </h3>
+                            <p className="text-xs text-white/80 mb-0.5 truncate">
+                              {review.role}
+                            </p>
+                            <p className="text-[10px] text-white/60 truncate">
+                              {review.company}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-0.5 flex-shrink-0">
+                            {Array.from({ length: review.rating }).map((_, i) => (
+                              <Star 
+                                key={i}
+                                className="w-3 h-3 fill-yellow-400 text-yellow-400 drop-shadow-sm" 
+                              />
+                            ))}
+                          </div>
+                        </div>
 
-                    <div className="flex items-center justify-between pt-4 border-t" style={{ borderColor: '#4a5568' }}>
-                      <span className="text-sm text-gray-400">
-                        {currentReview.date}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-300">
-                          {currentIndex + 1} / {reviews.length}
+                        <blockquote 
+                          className="text-xs text-white/90 leading-relaxed"
+                          style={{
+                            display: '-webkit-box',
+                            WebkitLineClamp: 5,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}
+                        >
+                          "{review.text}"
+                        </blockquote>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-3 mt-3 border-t border-white/20">
+                        <span className="text-[10px] text-white/60">
+                          {review.date}
                         </span>
                       </div>
                     </div>
-                  </div>
-                </div>
-              </motion.div>
-            </AnimatePresence>
-          </div>
-
-          <div className="flex justify-center items-center gap-4 mt-8">
-            <motion.button
-              onClick={handlePrev}
-              className="p-3 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors"
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.95 }}
-              aria-label="Previous review"
-            >
-              <ChevronLeft className="w-5 h-5 text-white" />
-            </motion.button>
-
-            <div className="flex gap-2">
-              {reviews.map((_, index) => (
-                <motion.button
-                  key={index}
-                  onClick={() => {
-                    setDirection(index > currentIndex ? 1 : -1);
-                    setCurrentIndex(index);
-                  }}
-                  className={cn(
-                    "w-2 h-2 rounded-full transition-all",
-                    index === currentIndex
-                      ? "bg-orange-500 w-8"
-                      : "bg-gray-600 hover:bg-gray-500"
-                  )}
-                  whileHover={{ scale: 1.2 }}
-                  whileTap={{ scale: 0.9 }}
-                  aria-label={`Go to review ${index + 1}`}
-                />
-              ))}
+                  </motion.div>
+                );
+              })}
             </div>
-
-            <motion.button
-              onClick={handleNext}
-              className="p-3 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors"
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.95 }}
-              aria-label="Next review"
-            >
-              <ChevronRight className="w-5 h-5 text-white" />
-            </motion.button>
           </div>
         </div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="grid grid-cols-2 md:grid-cols-4 gap-8 mt-16 max-w-4xl mx-auto"
-        >
-          {[
-            { number: "500+", label: "Happy Clients" },
-            { number: "98%", label: "Satisfaction Rate" },
-            { number: "4.9/5", label: "Average Rating" },
-            { number: "24/7", label: "Support" }
-          ].map((stat, index) => (
-            <div key={index} className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-orange-500 mb-2">
-                {stat.number}
-              </div>
-              <div className="text-sm text-gray-300">
-                {stat.label}
-              </div>
-            </div>
-          ))}
-        </motion.div>
       </div>
     </section>
   );
 }
 
 export default ReviewCarousel;
-

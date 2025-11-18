@@ -24,6 +24,47 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Add response interceptor for better error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK') {
+      // Only log once to reduce console noise
+      if (!(window as any).__backendErrorLogged) {
+        console.warn(
+          `Backend server not running at ${API_URL}. Start with: cd dbcars/backend && npm run dev`
+        );
+        (window as any).__backendErrorLogged = true;
+      }
+      
+      // Create a more helpful error message
+      const networkError = new Error(
+        `Cannot connect to backend server at ${API_URL}. Please ensure the backend is running.`
+      );
+      networkError.name = 'NetworkError';
+      return Promise.reject(networkError);
+    }
+    
+    if (error.response) {
+      // Server responded with error status
+      console.error('API Error:', error.response.status, error.response.data);
+      return Promise.reject(error);
+    } else if (error.request) {
+      // Request was made but no response received
+      console.error('No response from server:', error.request);
+      const timeoutError = new Error(
+        `Request timeout: Server at ${API_URL} did not respond. Please check if the backend is running.`
+      );
+      timeoutError.name = 'TimeoutError';
+      return Promise.reject(timeoutError);
+    } else {
+      // Something else happened
+      console.error('Request setup error:', error.message);
+      return Promise.reject(error);
+    }
+  }
+);
+
 // Vehicles
 export const getVehicles = async (filters?: {
   category?: string;
@@ -109,6 +150,17 @@ export const createBooking = async (bookingData: any) => {
     console.error('API Error in createBooking:', error);
     console.error('Error response data:', error.response?.data);
     console.error('Error response status:', error.response?.status);
+    console.error('Error response headers:', error.response?.headers);
+    console.error('Full error object:', {
+      message: error.message,
+      response: error.response ? {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        headers: error.response.headers
+      } : null,
+      request: error.request ? 'Request made but no response' : null
+    });
     throw error;
   }
 };
@@ -636,6 +688,16 @@ export const toggleLocationStatus = async (id: string) => {
 
 export const deleteLocation = async (id: string) => {
   const response = await api.delete(`/admin/locations/${id}`);
+  return response.data;
+};
+
+// Contact
+export const submitContactForm = async (contactData: {
+  name: string;
+  email: string;
+  message: string;
+}) => {
+  const response = await api.post('/contact', contactData);
   return response.data;
 };
 

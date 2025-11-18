@@ -609,6 +609,12 @@ router.put('/bookings/:id', async (req: Request, res: Response) => {
 
     const updatedBooking = result.rows[0];
 
+    // Check if payment link was newly added
+    // Use the updated booking's payment_link value (which may come from request or remain unchanged)
+    const hadPaymentLink = currentBooking.payment_link && currentBooking.payment_link.trim() !== '';
+    const hasPaymentLink = updatedBooking.payment_link && updatedBooking.payment_link.trim() !== '';
+    const paymentLinkAdded = !hadPaymentLink && hasPaymentLink;
+
     // Handle coupon usage tracking based on status changes
     if (currentBooking.coupon_code) {
       // Status changed from non-confirmed to confirmed - increment usage
@@ -652,20 +658,51 @@ router.put('/bookings/:id', async (req: Request, res: Response) => {
     const fullBooking = fullBookingResult.rows[0];
 
     // Send status update email (fire-and-forget, don't block the response)
-    console.log('Attempting to send booking status email for:', {
-      booking_number: fullBooking.booking_number,
-      status: fullBooking.status,
-      email: fullBooking.email,
-      has_payment_link: !!fullBooking.payment_link,
-      has_base_price: fullBooking.base_price !== undefined,
-      has_extras_price: fullBooking.extras_price !== undefined,
-      has_discount_amount: fullBooking.discount_amount !== undefined,
-    });
+    // Always send email when:
+    // 1. Status changes, OR
+    // 2. Payment link is newly added, OR
+    // 3. Payment link is provided and status is set to waiting_payment/confirmed (even if link existed before)
+    const hasPaymentLinkInRequest = payment_link !== undefined && payment_link && payment_link.trim() !== '';
+    const statusRequiresPaymentEmail = (newStatus === 'waiting_payment' || newStatus === 'confirmed') && hasPaymentLinkInRequest;
+    const shouldSendEmail = currentBooking.status !== newStatus || paymentLinkAdded || statusRequiresPaymentEmail;
     
-    sendBookingStatusEmail(fullBooking).catch((emailError) => {
-      console.error('Failed to send booking status email:', emailError);
-      console.error('Email error stack:', emailError.stack);
-    });
+    if (shouldSendEmail) {
+      console.log('[Admin] Attempting to send booking status email for:', {
+        booking_number: fullBooking.booking_number,
+        status: fullBooking.status,
+        email: fullBooking.email,
+        has_payment_link: !!fullBooking.payment_link,
+        payment_link: fullBooking.payment_link ? '***provided***' : 'none',
+        payment_link_added: paymentLinkAdded,
+        status_changed: currentBooking.status !== newStatus,
+        status_requires_payment_email: statusRequiresPaymentEmail,
+        reason: statusRequiresPaymentEmail 
+          ? 'Status requires payment email' 
+          : paymentLinkAdded 
+            ? 'Payment link added' 
+            : 'Status changed',
+        has_base_price: fullBooking.base_price !== undefined,
+        has_extras_price: fullBooking.extras_price !== undefined,
+        has_discount_amount: fullBooking.discount_amount !== undefined,
+      });
+      
+      // Always send email when payment link is added, regardless of status
+      sendBookingStatusEmail(fullBooking)
+        .then(() => {
+          console.log('[Admin] Booking status email sent successfully for:', fullBooking.booking_number);
+        })
+        .catch((emailError) => {
+          console.error('[Admin] Failed to send booking status email:', emailError);
+          console.error('[Admin] Email error details:', {
+            message: emailError.message,
+            response: emailError.response?.data,
+            status: emailError.response?.status,
+            stack: emailError.stack,
+          });
+        });
+    } else {
+      console.log('[Admin] Skipping email send - no status change and no payment link added');
+    }
 
     res.json(updatedBooking);
   } catch (error) {
@@ -1605,7 +1642,7 @@ router.get('/availability/analytics', async (req: Request, res: Response) => {
     res.json({
       utilization: utilizationResult.rows,
       availability: availabilityResult.rows[0],
-      utilization_rate: parseFloat(utilizationRate),
+      utilization_rate: typeof utilizationRate === 'number' ? utilizationRate : parseFloat(utilizationRate),
       date_range: {
         start: startDate.toISOString(),
         end: endDate.toISOString(),

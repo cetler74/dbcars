@@ -12,6 +12,7 @@ import uploadRoutes from './routes/upload';
 import blogRoutes from './routes/blog';
 import couponsRoutes from './routes/coupons';
 import draftsRoutes from './routes/drafts';
+import contactRoutes from './routes/contact';
 
 dotenv.config();
 
@@ -38,6 +39,7 @@ app.use('/api/admin/drafts', draftsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/blog', blogRoutes);
+app.use('/api/contact', contactRoutes);
 
 // Root route
 app.get('/', (req, res) => {

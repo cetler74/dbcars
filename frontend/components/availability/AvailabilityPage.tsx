@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { getLocations, exportAvailability } from '@/lib/api';
+import { getLocations, exportAvailability, bulkUpdateSubunitStatus } from '@/lib/api';
 import toast from 'react-hot-toast';
 import HeaderBar from './HeaderBar';
-import QuickFilters from './QuickFilters';
 import VehiclePanel from './VehiclePanel';
 import CalendarPanel from './CalendarPanel';
 import QuickActionMenu from './QuickActionMenu';
@@ -203,6 +202,9 @@ export default function AvailabilityPage() {
         }
         await updateNote(data.note_id, updateData);
         setEditingNote(null);
+        // Close form on success
+        setInlineForm({ isOpen: false, type: null });
+        setSelectedDates([]);
       } else if (data.dateRange) {
         // Create notes for date range
         await createNotesForRange(
@@ -212,6 +214,10 @@ export default function AvailabilityPage() {
           data.note,
           data.note_type
         );
+        // Close form on success
+        setInlineForm({ isOpen: false, type: null });
+        setEditingNote(null);
+        setSelectedDates([]);
       } else if (data.date) {
         // Create single note
         await createNote({
@@ -221,12 +227,15 @@ export default function AvailabilityPage() {
           note: data.note,
           note_type: data.note_type,
         });
+        // Close form on success
+        setInlineForm({ isOpen: false, type: null });
+        setEditingNote(null);
+        setSelectedDates([]);
       }
-      setInlineForm({ isOpen: false, type: null });
-      setEditingNote(null);
-      setSelectedDates([]);
-    } catch (error) {
-      // Error already handled in hook
+    } catch (error: any) {
+      // Error already handled in hook with toast messages
+      // Don't close form on error so user can fix issues
+      console.error('Error saving note:', error);
     }
   };
 
@@ -393,17 +402,6 @@ export default function AvailabilityPage() {
           }
         }}
       />
-
-      {/* Quick Filters */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
-        <QuickFilters
-          filters={filters}
-          vehicles={vehicles}
-          locations={locations}
-          onFilterChange={setFilters}
-        />
-      </div>
-
 
       {/* Main Content: Dual Pane Layout */}
       <div className="flex-1 flex flex-col lg:flex-row min-h-0 bg-white">
@@ -609,46 +607,6 @@ export default function AvailabilityPage() {
               >
                 Add Note to Selected
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bulk Status Update Bar - for selected subunits */}
-      {selectedVehicle && subunits.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-6 py-4 shadow-xl hidden lg:block">
-          <div className="flex items-center justify-between max-w-7xl mx-auto">
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-semibold">
-                {subunits.length} subunit{subunits.length !== 1 ? 's' : ''} available
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <select
-                onChange={async (e) => {
-                  const newStatus = e.target.value;
-                  if (newStatus && confirm(`Update all ${subunits.length} subunits to ${newStatus}?`)) {
-                    try {
-                      const subunitIds = subunits.map((s: any) => s.id);
-                      await bulkUpdateSubunitStatus(subunitIds, newStatus);
-                      toast.success(`Updated ${subunitIds.length} subunits to ${newStatus}`);
-                      refresh();
-                    } catch (error: any) {
-                      toast.error(error.response?.data?.error || 'Error updating subunits');
-                    }
-                  }
-                  e.target.value = '';
-                }}
-                className="px-4 py-2 bg-white text-blue-600 rounded-xl hover:bg-gray-50 text-sm font-semibold transition-all shadow-md hover:shadow-lg border-0 cursor-pointer"
-                defaultValue=""
-              >
-                <option value="" disabled>Bulk Update Status...</option>
-                <option value="available">Available</option>
-                <option value="reserved">Reserved</option>
-                <option value="out_on_rent">Out on Rent</option>
-                <option value="returned">Returned</option>
-                <option value="maintenance">Maintenance</option>
-              </select>
             </div>
           </div>
         </div>

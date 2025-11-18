@@ -463,7 +463,7 @@ export default function EditVehiclePage() {
             <div>
               <h3 className="text-xl font-bold text-gray-900">Vehicle Unit Information</h3>
               <p className="text-sm text-gray-600 mt-1">
-                These fields show information from the first vehicle unit and cannot be edited here.
+                License plate, VIN, and mileage cannot be edited here. Location can be updated.
               </p>
             </div>
           </div>
@@ -500,8 +500,8 @@ export default function EditVehiclePage() {
                 <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <select
                   value={formData.location_id}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl bg-gray-50 text-gray-500 cursor-not-allowed"
-                  disabled
+                  onChange={(e) => setFormData({ ...formData, location_id: e.target.value })}
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all bg-white appearance-none"
                 >
                   <option value="">Select Location</option>
                   {locations.map((location) => (

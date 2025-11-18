@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import LoadingSpinner from '@/components/admin/LoadingSpinner';
 import EmptyState from '@/components/admin/EmptyState';
+import RichTextEditor from '@/components/admin/RichTextEditor';
 
 interface BlogPost {
   id: string;
@@ -569,17 +570,29 @@ export default function AdminBlogPage() {
               <h2 className="text-3xl font-bold text-gray-900">
                 {editingPost ? 'Edit Blog Post' : 'Create New Blog Post'}
               </h2>
-              <button
-                onClick={handleCloseModal}
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={handleCloseModal}
+                  className="px-6 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
+                >
+                  <X className="w-5 h-5" />
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  form="blog-post-form"
+                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl hover:from-blue-700 hover:to-blue-600 transition-all font-semibold flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                >
+                  <Save className="w-5 h-5" />
+                  {editingPost ? 'Update Post' : 'Create Post'}
+                </button>
+              </div>
             </div>
 
             {/* Content */}
             <div className="container mx-auto px-6 py-8 max-w-5xl">
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form id="blog-post-form" onSubmit={handleSubmit} className="space-y-6">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Title *
@@ -678,17 +691,11 @@ export default function AdminBlogPage() {
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Content *
                   </label>
-                  <div className="relative">
-                    <FileText className="absolute left-3 top-3 w-5 h-5 text-gray-400 pointer-events-none" />
-                    <textarea
-                      value={formData.content}
-                      onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                      rows={20}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all font-mono text-sm resize-none"
-                      required
-                      placeholder="Write your blog post content here..."
-                    />
-                  </div>
+                  <RichTextEditor
+                    content={formData.content}
+                    onChange={(content) => setFormData({ ...formData, content })}
+                    placeholder="Write your blog post content here..."
+                  />
                 </div>
 
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
@@ -708,23 +715,6 @@ export default function AdminBlogPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-4 pt-6 border-t border-gray-200">
-                  <button
-                    type="button"
-                    onClick={handleCloseModal}
-                    className="px-6 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
-                  >
-                    <X className="w-5 h-5" />
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl hover:from-blue-700 hover:to-blue-600 transition-all font-semibold flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-                  >
-                    <Save className="w-5 h-5" />
-                    {editingPost ? 'Update Post' : 'Create Post'}
-                  </button>
-                </div>
               </form>
             </div>
           </div>

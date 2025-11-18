@@ -12,6 +12,10 @@ router.post(
   '/',
   [
     body('customer').isObject().withMessage('Customer must be an object'),
+    body('customer.first_name').notEmpty().withMessage('Customer first name is required'),
+    body('customer.last_name').notEmpty().withMessage('Customer last name is required'),
+    body('customer.email').isEmail().withMessage('Customer email must be a valid email'),
+    body('customer.phone').notEmpty().withMessage('Customer phone is required'),
     body('vehicle_id').isUUID().withMessage('Vehicle ID must be a valid UUID'),
     body('pickup_location_id').isUUID().withMessage('Pickup location ID must be a valid UUID'),
     body('dropoff_location_id').isUUID().withMessage('Dropoff location ID must be a valid UUID'),
@@ -40,9 +44,17 @@ router.post(
           return `${param}: ${msg}`;
         }).join(', ');
         
+        // Serialize errors properly to avoid circular references
+        const serializedErrors = errors.array().map((e: any) => ({
+          param: e.param || e.path || 'unknown',
+          msg: e.msg || 'Invalid value',
+          value: e.value !== undefined ? String(e.value) : undefined,
+          location: e.location || 'body'
+        }));
+        
         return res.status(400).json({ 
           error: 'Validation failed',
-          errors: errors.array(),
+          errors: serializedErrors,
           details: errorDetails
         });
       }
@@ -63,6 +75,16 @@ router.post(
       const pickupDate = new Date(pickup_date);
       const dropoffDate = new Date(dropoff_date);
 
+      // Validate minimum 1 day (24 hours) rental period
+      const timeDiff = dropoffDate.getTime() - pickupDate.getTime();
+      const hoursDiff = timeDiff / (1000 * 60 * 60);
+      if (hoursDiff < 24) {
+        return res.status(400).json({ 
+          error: 'Minimum rental period is 1 day (24 hours)',
+          details: `Selected rental period is ${Math.round(hoursDiff * 10) / 10} hours. Minimum required is 24 hours.`
+        });
+      }
+
       // Check availability
       const availability = await checkAvailability(
         vehicle_id,
@@ -71,7 +93,18 @@ router.post(
       );
 
       if (!availability.available) {
-        return res.status(400).json({ error: 'Vehicle not available for selected dates' });
+        console.error('Availability check failed:', {
+          vehicle_id,
+          pickupDate: pickupDate.toISOString(),
+          dropoffDate: dropoffDate.toISOString(),
+          availableSubunits: availability.availableSubunits?.length || 0,
+          blockedDates: availability.blockedDates || [],
+        });
+        return res.status(400).json({ 
+          error: 'Vehicle not available for selected dates',
+          details: availability.blockedDates ? 'Blocked dates found' : 'No available vehicle units',
+          blockedDates: availability.blockedDates || null
+        });
       }
 
       // Select subunit if not provided
