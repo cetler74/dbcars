@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getAdminBookings, updateBookingStatus, getBooking } from '@/lib/api';
+import { getAdminBookings, updateBookingStatus, getBooking, getInvoice, downloadInvoice, generateInvoice } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { 
   FileText, 
@@ -41,6 +41,9 @@ export default function AdminBookingsPage() {
   const [cancelNotes, setCancelNotes] = useState('');
   const [bookingToCancel, setBookingToCancel] = useState<string | null>(null);
   const [selectedBookings, setSelectedBookings] = useState<Set<string>>(new Set());
+  const [invoice, setInvoice] = useState<any>(null);
+  const [loadingInvoice, setLoadingInvoice] = useState(false);
+  const [generatingInvoice, setGeneratingInvoice] = useState(false);
   const [pagination, setPagination] = useState({
     page: 1,
     per_page: 20,
@@ -130,20 +133,72 @@ export default function AdminBookingsPage() {
   const handleViewBooking = async (booking: any) => {
     setSelectedBooking(booking);
     setLoadingDetails(true);
+    setLoadingInvoice(true);
     try {
       const details = await getBooking(booking.booking_number);
       setBookingDetails(details);
+      
+      // Load invoice if exists
+      try {
+        const invoiceData = await getInvoice(booking.id);
+        setInvoice(invoiceData);
+      } catch (error: any) {
+        // Invoice not found is expected, don't show error
+        if (error.response?.status !== 404) {
+          console.error('Error loading invoice:', error);
+        }
+        setInvoice(null);
+      }
     } catch (error) {
       console.error('Error loading booking details:', error);
       toast.error('Error loading booking details');
     } finally {
       setLoadingDetails(false);
+      setLoadingInvoice(false);
     }
   };
 
   const closeModal = () => {
     setSelectedBooking(null);
     setBookingDetails(null);
+    setInvoice(null);
+  };
+
+  const handleDownloadInvoice = async (invoiceId: string, invoiceNumber: string) => {
+    try {
+      const blob = await downloadInvoice(invoiceId);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `invoice-${invoiceNumber}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success('Invoice downloaded successfully');
+    } catch (error) {
+      console.error('Error downloading invoice:', error);
+      toast.error('Failed to download invoice');
+    }
+  };
+
+  const handleGenerateInvoice = async (bookingId: string, regenerate: boolean = false) => {
+    setGeneratingInvoice(true);
+    try {
+      const result = await generateInvoice(bookingId, regenerate);
+      setInvoice(result.invoice);
+      toast.success(regenerate ? 'Invoice regenerated successfully' : 'Invoice generated successfully');
+      // Reload booking details to refresh data
+      if (selectedBooking) {
+        handleViewBooking(selectedBooking);
+      }
+    } catch (error: any) {
+      console.error('Error generating invoice:', error);
+      const errorMessage = error.response?.data?.error || 'Failed to generate invoice';
+      toast.error(errorMessage);
+    } finally {
+      setGeneratingInvoice(false);
+    }
   };
 
   const exportToCSV = (data: any[]) => {
@@ -951,6 +1006,102 @@ export default function AdminBookingsPage() {
                         <span>{formatCurrency(parseFloat(bookingDetails.total_price || 0))}</span>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Invoice Section */}
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                    <h3 className="text-xl font-bold mb-4 text-gray-900 flex items-center gap-2">
+                      <FileText className="w-5 h-5" />
+                      Invoice
+                    </h3>
+                    {loadingInvoice ? (
+                      <div className="text-center py-4">
+                        <p className="text-gray-600">Loading invoice information...</p>
+                      </div>
+                    ) : invoice ? (
+                      <div className="space-y-4">
+                        <div className="bg-gradient-to-r from-emerald-50 to-green-50 p-4 rounded-xl border border-emerald-200">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <p className="text-sm text-gray-600 font-medium">Invoice Number:</p>
+                              <p className="text-lg font-bold text-gray-900 mt-1">{invoice.invoice_number}</p>
+                              <p className="text-xs text-gray-500 mt-2">
+                                Generated: {new Date(invoice.created_at).toLocaleDateString('en-GB', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </p>
+                              {invoice.sent_at && (
+                                <p className="text-xs text-emerald-600 mt-1">
+                                  Sent: {new Date(invoice.sent_at).toLocaleDateString('en-GB', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex gap-2 ml-4">
+                              <button
+                                onClick={() => handleDownloadInvoice(invoice.id, invoice.invoice_number)}
+                                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all text-sm font-semibold shadow-sm hover:shadow-md flex items-center gap-2"
+                              >
+                                <Download className="w-4 h-4" />
+                                Download PDF
+                              </button>
+                              <button
+                                onClick={() => handleGenerateInvoice(bookingDetails.id, true)}
+                                disabled={generatingInvoice}
+                                className="px-4 py-2 bg-gradient-to-r from-orange-600 to-orange-500 text-white rounded-lg hover:from-orange-700 hover:to-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all text-sm font-semibold shadow-sm hover:shadow-md flex items-center gap-2"
+                                title="Regenerate invoice (useful if PDF is broken or empty)"
+                              >
+                                {generatingInvoice ? (
+                                  <>
+                                    <LoadingSpinner size="sm" />
+                                    Regenerating...
+                                  </>
+                                ) : (
+                                  <>
+                                    <FileText className="w-4 h-4" />
+                                    Regenerate
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                        <p className="text-gray-600 mb-4">No invoice has been generated for this booking yet.</p>
+                        {bookingDetails.status === 'confirmed' || bookingDetails.status === 'completed' ? (
+                          <button
+                            onClick={() => handleGenerateInvoice(bookingDetails.id)}
+                            disabled={generatingInvoice}
+                            className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-lg hover:from-emerald-700 hover:to-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all text-sm font-semibold shadow-sm hover:shadow-md flex items-center gap-2"
+                          >
+                            {generatingInvoice ? (
+                              <>
+                                <LoadingSpinner size="sm" />
+                                Generating...
+                              </>
+                            ) : (
+                              <>
+                                <FileText className="w-4 h-4" />
+                                Generate Invoice
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <p className="text-sm text-gray-500">Invoice will be automatically generated when booking is confirmed.</p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Extras */}

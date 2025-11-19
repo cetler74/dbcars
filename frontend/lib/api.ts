@@ -701,5 +701,36 @@ export const submitContactForm = async (contactData: {
   return response.data;
 };
 
+// Invoices
+export const getInvoice = async (bookingId: string) => {
+  const response = await api.get(`/admin/invoices/booking/${bookingId}`);
+  return response.data;
+};
+
+export const getInvoiceById = async (invoiceId: string) => {
+  const response = await api.get(`/admin/invoices/${invoiceId}`);
+  return response.data;
+};
+
+export const getInvoices = async (page: number = 1, perPage: number = 20) => {
+  const response = await api.get(`/admin/invoices?page=${page}&per_page=${perPage}`);
+  return response.data;
+};
+
+export const downloadInvoice = async (invoiceId: string): Promise<Blob> => {
+  const response = await api.get(`/admin/invoices/${invoiceId}/download`, {
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+export const generateInvoice = async (bookingId: string, regenerate: boolean = false) => {
+  const url = regenerate 
+    ? `/admin/invoices/regenerate/${bookingId}`
+    : `/admin/invoices/generate/${bookingId}${regenerate ? '?regenerate=true' : ''}`;
+  const response = await api.post(url);
+  return response.data;
+};
+
 export default api;
 

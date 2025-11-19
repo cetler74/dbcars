@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getInvoicePDF } from './invoiceStorage';
 
 interface BookingEmailData {
   booking_number: string;
@@ -25,6 +26,7 @@ interface BookingStatusEmailData extends BookingEmailData {
   notes?: string | null;
   pickup_location_city?: string;
   dropoff_location_city?: string;
+  invoice_path?: string | null;
 }
 
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
@@ -322,12 +324,50 @@ export async function sendBookingStatusEmail(booking: BookingStatusEmailData) {
     </html>
   `;
 
-  const customerPayload = {
+  // Prepare invoice attachment if available
+  let attachments: Array<{ name: string; content: string }> | undefined = undefined;
+  let invoiceNumber: string | undefined = undefined;
+  
+  if (booking.invoice_path) {
+    try {
+      const invoicePdf = getInvoicePDF(booking.invoice_path);
+      if (invoicePdf) {
+        // Extract invoice number from path (format: INV-YYYY-XXXX-timestamp.pdf)
+        const pathParts = booking.invoice_path.split('/');
+        const filename = pathParts[pathParts.length - 1];
+        invoiceNumber = filename.split('-').slice(0, 3).join('-');
+        
+        attachments = [
+          {
+            name: `invoice-${invoiceNumber}.pdf`,
+            content: invoicePdf.toString('base64'),
+          },
+        ];
+        console.log('[Brevo] Invoice PDF attached to email:', invoiceNumber);
+      }
+    } catch (error) {
+      console.error('[Brevo] Failed to attach invoice PDF:', error);
+      // Continue without attachment if reading fails
+    }
+  }
+
+  // Add invoice number to email body if available
+  const invoiceNote = invoiceNumber
+    ? `<p style="margin-top: 20px; padding: 15px; background-color: #f0fdf4; border-left: 4px solid #10b981; border-radius: 4px;">
+         <strong>Invoice:</strong> Your invoice ${invoiceNumber} is attached to this email.
+       </p>`
+    : '';
+
+  const customerPayload: any = {
     sender: { email: senderEmail, name: senderName },
     to: [{ email: booking.email, name: `${booking.first_name} ${booking.last_name}` }],
     subject: `${emailSubject} - ${booking.booking_number}`,
-    htmlContent: customerHtml,
+    htmlContent: customerHtml.replace('</body>', `${invoiceNote}</body>`),
   };
+
+  if (attachments) {
+    customerPayload.attachments = attachments;
+  }
 
   const adminPayload = adminEmail
     ? {

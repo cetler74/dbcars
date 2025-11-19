@@ -13,6 +13,7 @@ import blogRoutes from './routes/blog';
 import couponsRoutes from './routes/coupons';
 import draftsRoutes from './routes/drafts';
 import contactRoutes from './routes/contact';
+import invoiceRoutes from './routes/invoices';
 
 dotenv.config();
 
@@ -37,6 +38,7 @@ app.use('/api/auth', authRoutes);
 // Register more specific admin routes first
 app.use('/api/admin/drafts', draftsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/admin/invoices', invoiceRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/blog', blogRoutes);
 app.use('/api/contact', contactRoutes);
